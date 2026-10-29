@@ -128,24 +128,30 @@
   function onTick(ev) {
     state.hosts = ev.hosts;
     for (const h of ev.hosts) {
+      let ring = state.rings[h.id];
+      if (!ring) {                                                        // first sight of this host: fetch its last ten minutes
+        ring = state.rings[h.id] = [];
+        seedRing(h.id);
+      }
       if (h.snapshot && h.reachable) {
-        const ring = state.rings[h.id] || (state.rings[h.id] = []);
         const s = h.snapshot;
         ring.push({ ts: ev.ts, cpu: s.cpu.percent, mem_used: s.memory.used_bytes,
                     gpu_util: s.gpus.length ? s.gpus[0].util_percent : null,
                     net_rx: s.network.reduce((a, n) => a + n.rx_bps, 0), net_tx: s.network.reduce((a, n) => a + n.tx_bps, 0) });
         if (ring.length > 300) ring.shift();
       }
-      if (!state.rings[h.id]) seedRing(h.id);
     }
     renderCards();
     if (state.view === "hosts") renderHostsTable();
   }
   async function seedRing(id) {                                           // the ten minutes before the page opened
-    state.rings[id] = [];
     try {
       const data = await api("GET", `api/ring?host=${id}`);
-      if (data && Array.isArray(data.points) && state.rings[id].length === 0) state.rings[id] = data.points;
+      if (!data || !Array.isArray(data.points)) return;
+      const have = state.rings[id] || [];                                 // ticks that arrived while we were fetching
+      const last = data.points.length ? data.points[data.points.length - 1].ts : 0;
+      state.rings[id] = data.points.concat(have.filter((p) => p.ts > last)).slice(-300);
+      renderCards();
     } catch (e) { /* the sparkline just starts now */ }
   }
 
@@ -207,6 +213,10 @@
     }
     for (const id of Object.keys(state.cards)) {                          // removed hosts
       if (!seen.has(Number(id))) { state.cards[id].card.remove(); delete state.cards[id]; delete state.rings[id]; }
+    }
+    if (state.view === "history" && (history.host == null || $("history-host").options.length !== state.hosts.length)) {
+      fillHistoryHosts();                                                 // the tab opened before the hosts arrived, or a host came or went
+      if (history.host != null && !history.points.length) loadHistory();
     }
   }
   function updateCard(c, h) {
@@ -466,9 +476,12 @@
       $("view-history").hidden = state.view !== "history";
       if (state.view === "hosts") refreshHosts();
       showHistory(state.view === "history");
+      try { history.replaceState(null, "", state.view === "live" ? location.pathname : `#${state.view}`); } catch (e) { /* fine */ }
     };
   });
   (async () => {
+    const wanted = document.querySelector(`.tab[data-view="${location.hash.slice(1)}"]`);   // #history, #hosts deep links
+    if (wanted) wanted.click();
     try {
       const h = await api("GET", "healthz");
       $("version").textContent = `v${h.version}`;
