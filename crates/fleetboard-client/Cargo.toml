@@ -29,6 +29,8 @@ rand = "0.8"                                           # gen-token
 [target.'cfg(windows)'.dependencies]
 # GPU performance counters (PDH) and adapter descriptions (DXGI) for AMD and Intel cards on Windows
 windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Performance", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
+windows-service = "0.7"                                # register with and run under the Service Control Manager
+tracing-appender = "0.2"                               # a daily log file when there is no console (service mode)
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }       # drive the router in tests without a socket

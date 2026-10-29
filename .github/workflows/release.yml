@@ -1,0 +1,79 @@
+# A tag v* builds the binaries for every target, writes SHA256SUMS and publishes a GitHub release
+# the installers download from. The Linux client is built on ubuntu-22.04 against glibc 2.35 (it
+# dlopens the NVIDIA driver library, which a static musl binary can't); the server is fully static.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write                                 # gh release create needs to upload assets
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            client: fleetboard-client-windows-x86_64.exe
+            server: fleetboard-server-windows-x86_64.exe
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            client: fleetboard-client-linux-x86_64
+            server: ""                            # the Linux server comes from the musl job below
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-musl
+            client: ""
+            server: fleetboard-server-linux-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: musl tools                          # the C compiler rusqlite's bundled SQLite needs for a static build
+        if: endsWith(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build client
+        if: matrix.client != ''
+        run: cargo build --release -p fleetboard-client --target ${{ matrix.target }}
+      - name: Build server
+        if: matrix.server != ''
+        run: cargo build --release -p fleetboard-server --target ${{ matrix.target }}
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir -p dist
+          ext=""; [[ "${{ matrix.target }}" == *windows* ]] && ext=".exe"
+          [[ -n "${{ matrix.client }}" ]] && cp "target/${{ matrix.target }}/release/fleetboard-client$ext" "dist/${{ matrix.client }}"
+          [[ -n "${{ matrix.server }}" ]] && cp "target/${{ matrix.target }}/release/fleetboard-server$ext" "dist/${{ matrix.server }}"
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Checksums
+        run: cd artifacts && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(awk '/^## /{n++} n==1' docs/CHANGELOG.md)     # the newest section of the changelog
+          gh release create "${GITHUB_REF_NAME}" artifacts/* --title "Fleetboard ${GITHUB_REF_NAME}" --notes "${notes:-Release ${GITHUB_REF_NAME}}"

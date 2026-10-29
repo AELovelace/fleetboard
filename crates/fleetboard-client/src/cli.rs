@@ -1,5 +1,5 @@
-//! Command line: `run` (the service), `once` (print one snapshot), `gen-token`, `check-config`.
-//! Windows adds `service install|uninstall|start|stop` in milestone M5.
+//! Command line: `run` (the service), `once` (print one snapshot), `gen-token`, `check-config`,
+//! and on Windows `service install|uninstall|start|stop` (plus the hidden `service run` the SCM uses).
 
 use std::path::PathBuf;
 
@@ -30,6 +30,26 @@ pub enum Command {
     GenToken,
     /// Read the config and report what's wrong with it, if anything
     CheckConfig,
+    /// Windows service: install, uninstall, start or stop the "Fleetboard client" service
+    #[cfg(windows)]
+    #[command(subcommand)]
+    Service(ServiceCmd),
+}
+
+#[cfg(windows)]
+#[derive(Subcommand, Debug)]
+pub enum ServiceCmd {
+    /// Register the service (auto-start, LocalService, restart on failure) using --config
+    Install,
+    /// Stop and remove the service
+    Uninstall,
+    /// Start the installed service
+    Start,
+    /// Stop the installed service
+    Stop,
+    /// What the Service Control Manager launches; not for people
+    #[command(hide = true)]
+    Run,
 }
 
 impl Cli {

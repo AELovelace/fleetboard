@@ -15,7 +15,11 @@ pub mod cli;
 pub mod config;
 pub mod gpu;
 pub mod http;
+pub mod run;
 pub mod sampler;
+
+#[cfg(windows)]
+pub mod service_windows;
 
 /// The client's own version, reported in `Health.agent` and `HostFacts.agent`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
