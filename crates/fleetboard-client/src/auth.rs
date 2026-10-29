@@ -26,7 +26,8 @@ pub fn token_matches(header: Option<&str>, expected: &str) -> bool {
 mod tests {
     use super::*;
 
-    const T: &str = "abcdefghijklmnopqrstuvwxyz123456";
+    // A plainly fake token (low entropy, so secret scanners don't mistake it for a real one).
+    const T: &str = "test-token-test-token-test-token";
 
     #[test]
     fn accepts_the_right_token_in_any_scheme_case() {
@@ -39,10 +40,8 @@ mod tests {
         assert!(!token_matches(None, T));
         assert!(!token_matches(Some(T), T)); // no scheme
         assert!(!token_matches(Some(&format!("Basic {T}")), T)); // wrong scheme
-        assert!(!token_matches(
-            Some("Bearer abcdefghijklmnopqrstuvwxyz12345X"),
-            T
-        )); // one char off
+        let one_off = format!("Bearer {}X", &T[..T.len() - 1]); // last character wrong
+        assert!(!token_matches(Some(&one_off), T));
         assert!(!token_matches(Some("Bearer abc"), T)); // wrong length
         assert!(!token_matches(Some("Bearer "), "")); // an empty expected token never matches
     }
