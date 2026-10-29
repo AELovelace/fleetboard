@@ -1,0 +1,4 @@
+# Everyone (and CI) builds with the same channel; rustup reads this file automatically.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

@@ -1,0 +1,89 @@
+<!doctype html>
+<!-- Fleetboard's one page. Every URL here is relative: Mnemerynne's Remote proxy serves this under
+     /remote/fleetboard/ and strips that prefix before it reaches the server. No inline scripts. -->
+<html lang="en" data-theme="neon">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fleetboard</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="grid-scene" aria-hidden="true"></div>
+  <main>
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">FLEET · LIVE</p>
+        <h1>Fleetboard<span class="cursor">_</span></h1>
+        <p class="subtitle">Every machine, every two seconds.</p>
+      </div>
+      <div class="connection" id="connection" aria-live="polite">
+        <span class="light" id="light"></span><span id="connection-text">connecting…</span>
+        <span class="version" id="version"></span>
+      </div>
+    </header>
+
+    <div class="notice error" id="banner" hidden></div>
+
+    <nav class="tabs" aria-label="Views">
+      <button class="tab active" data-view="live" type="button">Live</button>
+      <button class="tab" data-view="history" type="button">History</button>
+      <button class="tab" data-view="hosts" type="button">Hosts</button>
+    </nav>
+
+    <section id="view-history" class="view" hidden>
+      <div class="panel">
+        <div class="section-title">
+          <h2>Last 24 hours</h2>
+          <div class="history-controls">
+            <select id="history-host" aria-label="Host"></select>
+            <div class="range" role="group" aria-label="Range">
+              <button type="button" class="small secondary" data-range="3600">1 h</button>
+              <button type="button" class="small secondary active" data-range="21600">6 h</button>
+              <button type="button" class="small secondary" data-range="86400">24 h</button>
+            </div>
+          </div>
+        </div>
+        <p class="hint" id="history-hint"></p>
+        <div class="charts" id="charts"></div>
+        <label class="scrubber">
+          <span class="mono" id="scrub-time">–</span>
+          <input type="range" id="scrub" min="0" max="0" value="0" step="1" aria-label="Time">
+        </label>
+        <dl class="legend" id="legend"></dl>
+      </div>
+    </section>
+
+    <section id="view-live" class="view">
+      <div class="cards" id="cards"></div>
+      <p class="empty" id="empty" hidden>No hosts yet. Add one under <strong>Hosts</strong>.</p>
+    </section>
+
+    <section id="view-hosts" class="view" hidden>
+      <div class="panel">
+        <div class="section-title"><h2>Hosts</h2><span class="badge" id="token-badge">token: …</span></div>
+        <table class="hosts" id="hosts-table">
+          <thead><tr><th>Name</th><th>Address</th><th>State</th><th>Latency</th><th>Polled</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <form id="host-form" class="host-form" autocomplete="off">
+          <input type="hidden" name="id" value="">
+          <label class="field">Name<input name="name" maxlength="64" required placeholder="rds1"></label>
+          <label class="field">Address<input name="address" maxlength="253" required placeholder="10.0.5.9 or rds1.lan:9280"></label>
+          <div class="form-actions">
+            <button type="button" class="secondary" id="check">Check</button>
+            <button type="submit" id="save">Add</button>
+            <button type="button" class="secondary" id="cancel" hidden>Cancel</button>
+          </div>
+          <p class="hint" id="form-hint"></p>
+          <p class="form-error" id="form-error"></p>
+        </form>
+      </div>
+    </section>
+
+    <footer><span>Fleetboard</span><span id="footer-version"></span></footer>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>

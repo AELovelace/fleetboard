@@ -1,0 +1,26 @@
+# Every push and pull request: format check, lints as errors, and the tests, on both OSes
+# the binaries ship for. Release builds live in release.yml.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable        # follows rust-toolchain.toml (adds rustfmt and clippy)
+      - uses: Swatinem/rust-cache@v2               # caches ~/.cargo and target/ between runs
+      - run: cargo fmt --all -- --check            # formatting is not negotiable
+      - run: cargo clippy --all-targets --all-features -- -D warnings   # every lint is an error
+      - run: cargo test --all-targets              # unit + integration tests

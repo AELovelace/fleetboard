@@ -1,0 +1,15 @@
+# Build output (target-test: a second target dir so tests can build while a dev server runs)
+/target
+/target-test
+
+# Local dev configs and databases (tokens live in these: never commit)
+*.toml.local
+dev.toml
+dev-client.toml
+*.db
+*.db-wal
+*.db-shm
+
+# Editors
+.vscode/
+.idea/

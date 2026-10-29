@@ -1,0 +1,21 @@
+# Fleetboard: a Cargo workspace with three crates.
+#   fleetboard-proto   the wire types the client and server share (no I/O)
+#   fleetboard-client  the small agent every machine runs (answers /healthz and /stats)
+#   fleetboard-server  the poller, SQLite history and dashboard on the Mnemerynne box
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"                      # one version for every crate; bumped together per release tag
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/AELovelace/fleetboard"
+
+# Release binaries: whole-program optimisation, one codegen unit and stripped symbols
+# make the single-file binaries small and fast; the longer build only happens on CI.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = 3

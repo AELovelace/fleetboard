@@ -1,0 +1,181 @@
+/* Fleetboard's look. The tokens copy Erynne's three themes (neon, sakura, plain) so the page blends
+   in when Mnemerynne frames it; app.js sets html[data-theme] from the parent frame, neon by default. */
+
+/* ---- neon: Erynne's default, always dark (copied from theme-neon.css) ---- */
+html[data-theme="neon"] {
+  color-scheme: dark;
+  --blush: #07020d; --glass: rgba(12, 3, 20, .84); --glass-strong: #12051c; --line: #ff2e9752;
+  --ink: #ffe9f5; --muted: #b98aa9; --rose: #ff2e97; --rose-deep: #ff1450; --cyan: #00f0ff;
+  --ok-bg: #0f3b2f; --ok-fg: #5dffc4; --bad-bg: #4a0f1f; --bad-fg: #ff8aa0; --busy-bg: #3b2f0f; --busy-fg: #ffd36b;
+  --radius: 0;
+  --serif: "Bahnschrift", "DIN Alternate", "Eurostile", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  --scene: radial-gradient(ellipse at 90% 0, #00f0ff0d, transparent 40%), radial-gradient(ellipse at 30% 100%, #720d603d, transparent 55%);
+  --grid-opacity: .13;
+}
+/* ---- sakura: light, follows the system's dark setting (copied from erynne.css) ---- */
+html[data-theme="sakura"] {
+  color-scheme: light dark;
+  --blush: #fff6f9; --glass: rgba(255, 255, 255, .72); --glass-strong: #ffffff; --line: #f0c9d8;
+  --ink: #3b1f2b; --muted: #8a6a78; --rose: #d9467f; --rose-deep: #b8305f; --cyan: #2a9db5;
+  --ok-bg: #dff5ea; --ok-fg: #1d6b4a; --bad-bg: #fde2e7; --bad-fg: #9b1c3a; --busy-bg: #fff1d6; --busy-fg: #8a5a00;
+  --radius: 14px;
+  --serif: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  --scene: none; --grid-opacity: 0;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-theme="sakura"] {
+    --blush: #1d1118; --glass: rgba(40, 24, 33, .78); --glass-strong: #2a1a23; --line: #4d2f3d;
+    --ink: #ffe9f1; --muted: #c39aae; --rose: #ff6fa5; --rose-deep: #ff4d8d; --cyan: #5ad1e8;
+    --ok-bg: #16352a; --ok-fg: #7be0b8; --bad-bg: #44182a; --bad-fg: #ff9eb4; --busy-bg: #3d2f12; --busy-fg: #ffd37a;
+  }
+}
+/* ---- plain: no decoration ---- */
+html[data-theme="plain"] {
+  color-scheme: light dark;
+  --blush: #f6f6f8; --glass: #ffffff; --glass-strong: #ffffff; --line: #d6d6de;
+  --ink: #1b1b22; --muted: #6a6a78; --rose: #3b5bdb; --rose-deep: #2b45b0; --cyan: #0b7285;
+  --ok-bg: #e3f7ec; --ok-fg: #1b6b3f; --bad-bg: #fde8e8; --bad-fg: #a61e1e; --busy-bg: #fff4d6; --busy-fg: #7a5200;
+  --radius: 6px;
+  --serif: system-ui, sans-serif; --sans: system-ui, sans-serif; --mono: ui-monospace, Consolas, monospace;
+  --scene: none; --grid-opacity: 0;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-theme="plain"] {
+    --blush: #15151a; --glass: #1f1f26; --glass-strong: #24242c; --line: #3a3a46;
+    --ink: #ececf2; --muted: #9a9aaa; --rose: #7b93ff; --rose-deep: #5f7cff; --cyan: #4fc3d8;
+    --ok-bg: #173327; --ok-fg: #7fd9a8; --bad-bg: #3d1a1a; --bad-fg: #ff9a9a; --busy-bg: #3a2e12; --busy-fg: #ffd37a;
+  }
+}
+
+/* ---- layout ---- */
+* { box-sizing: border-box }
+html, body { margin: 0; min-height: 100% }
+body {
+  color: var(--ink); background: var(--scene), var(--blush); font-family: var(--sans); font-size: 14px; line-height: 1.5;
+}
+button, input { font: inherit; color: inherit }
+[hidden] { display: none !important }
+.grid-scene {
+  position: fixed; inset: 0; pointer-events: none; opacity: var(--grid-opacity);
+  background-image: linear-gradient(#ff2e971c 1px, transparent 1px), linear-gradient(90deg, #ff2e971c 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+main { max-width: 1440px; margin: auto; padding: 28px 24px 20px; position: relative }
+
+.masthead { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding-bottom: 18px }
+.eyebrow, .connection, .version, footer, .stat-label, .mono { font-family: var(--mono); font-size: 11px; letter-spacing: .12em }
+.eyebrow { color: var(--rose); margin: 0 0 8px }
+h1 { font-family: var(--serif); font-size: clamp(26px, 3.5vw, 44px); letter-spacing: .06em; margin: 0 }
+html[data-theme="neon"] h1 { text-shadow: -1.2px 0 #00f0ff9e, 1.2px 0 #ff14509e, 0 0 24px #ff2e974f }
+h1 .cursor { color: var(--rose) }
+.subtitle { color: var(--muted); margin: 6px 0 0 }
+.connection { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; color: var(--cyan); justify-content: flex-end; max-width: 260px; text-align: right }
+.light { width: 8px; height: 8px; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); border-radius: 50% }
+.light.off { background: var(--bad-fg); box-shadow: 0 0 12px var(--bad-fg) }
+.version { color: var(--muted); width: 100%; font-size: 10px }
+
+.notice { border-left: 3px solid var(--cyan); background: var(--glass); padding: 12px 16px; margin: 0 0 16px; border-radius: var(--radius) }
+.notice.error { border-color: var(--bad-fg); color: var(--bad-fg) }
+.notice button { margin-left: 12px }
+
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 18px }
+.tab { background: transparent; border: 0; color: var(--muted); padding: 10px 18px; cursor: pointer; font-family: var(--serif); letter-spacing: .05em }
+.tab.active { color: var(--ink); box-shadow: inset 0 -2px var(--rose) }
+
+/* ---- cards ---- */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px }
+.card {
+  border: 1px solid var(--line); background: var(--glass); padding: 16px 18px; position: relative; border-radius: var(--radius);
+  display: flex; flex-direction: column; gap: 10px;
+}
+html[data-theme="neon"] .card::before { content: ""; position: absolute; top: -1px; left: -1px; width: 26px; height: 2px; background: var(--rose) }
+.card.down { border-color: var(--bad-fg) }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px }
+.card h2 { font-family: var(--serif); font-size: 20px; margin: 0; letter-spacing: .04em; overflow-wrap: anywhere }
+.card .facts { color: var(--muted); font-size: 12px; margin: -6px 0 0; overflow-wrap: anywhere }
+.pill { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; padding: 3px 8px; border-radius: 999px; white-space: nowrap }
+.pill.ok { background: var(--ok-bg); color: var(--ok-fg) }
+.pill.bad { background: var(--bad-bg); color: var(--bad-fg) }
+.pill.busy { background: var(--busy-bg); color: var(--busy-fg) }
+.card .error { color: var(--bad-fg); font-size: 12px; margin: 0 }
+
+.meter { display: grid; grid-template-columns: 70px 1fr auto; gap: 10px; align-items: center; font-size: 12px }
+.meter .stat-label { color: var(--rose); letter-spacing: .08em }
+.meter .bar { height: 8px; background: color-mix(in srgb, var(--line) 50%, transparent); position: relative; overflow: hidden; border-radius: var(--radius) }
+.meter .bar > span { position: absolute; inset: 0 auto 0 0; background: var(--rose); width: 0; transition: width .4s ease }
+.meter.mem .bar > span { background: var(--cyan) }
+.meter.gpu .bar > span { background: var(--rose-deep) }
+.meter.vram .bar > span { background: var(--cyan) }
+.meter.disk .bar > span { background: var(--muted) }
+.meter .value { font-family: var(--mono); font-size: 11px; color: var(--ink); white-space: nowrap }
+.card .line { color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap }
+.card .gpu-name { color: var(--muted); font-size: 11px; font-family: var(--mono); letter-spacing: .06em; margin-top: 4px }
+.spark { display: block; width: 100%; height: 36px; margin-top: 2px }
+.spark polyline { fill: none; stroke: var(--rose); stroke-width: 1.5; vector-effect: non-scaling-stroke }
+.spark.mem polyline { stroke: var(--cyan) }
+.spark.gpu polyline { stroke: var(--rose-deep) }
+.spark .base { stroke: var(--line); stroke-width: 1 }
+.empty { color: var(--muted); padding: 30px 0; text-align: center }
+
+/* ---- hosts panel ---- */
+.panel { border: 1px solid var(--line); background: var(--glass); padding: 20px 22px; border-radius: var(--radius) }
+.section-title { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px }
+.section-title h2 { font-family: var(--serif); font-size: 20px; margin: 0; letter-spacing: .05em }
+.badge { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; color: var(--cyan); border: 1px solid color-mix(in srgb, var(--cyan) 40%, transparent); padding: 5px 9px; border-radius: var(--radius) }
+.badge.bad { color: var(--bad-fg); border-color: var(--bad-fg) }
+table.hosts { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 18px }
+table.hosts th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px; font-family: var(--mono); letter-spacing: .1em; padding: 6px 8px; border-bottom: 1px solid var(--line) }
+table.hosts td { padding: 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); vertical-align: top }
+table.hosts td.actions { white-space: nowrap; text-align: right }
+.host-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; align-items: end }
+.host-form .form-actions, .host-form .hint, .host-form .form-error { grid-column: 1 / -1 }
+label.field { display: block; font-size: 12px; color: var(--muted) }
+label.field input { display: block; width: 100%; margin-top: 6px; padding: 9px 10px; border: 1px solid var(--line); background: var(--glass-strong); color: var(--ink); border-radius: var(--radius) }
+label.field input:focus-visible, button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px }
+button { cursor: pointer; background: color-mix(in srgb, var(--rose) 14%, transparent); border: 1px solid var(--rose); padding: 8px 14px; border-radius: var(--radius); font-weight: 600 }
+button:hover { background: color-mix(in srgb, var(--rose) 28%, transparent) }
+button:disabled { opacity: .45; cursor: not-allowed }
+button.secondary { border-color: color-mix(in srgb, var(--muted) 50%, transparent); background: transparent }
+button.danger { border-color: var(--bad-fg); color: var(--bad-fg) }
+button.small { padding: 4px 9px; font-size: 12px; font-weight: 500 }
+.form-actions { display: flex; gap: 8px; flex-wrap: wrap }
+.hint { color: var(--muted); font-size: 12px; margin: 0; min-height: 1.2em }
+.form-error { color: var(--bad-fg); font-size: 13px; margin: 0; white-space: pre-wrap }
+
+/* ---- history ---- */
+.history-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap }
+.history-controls select { padding: 6px 10px; border: 1px solid var(--line); background: var(--glass-strong); color: var(--ink); border-radius: var(--radius); font: inherit }
+.range { display: flex; gap: 4px }
+.range .active { background: color-mix(in srgb, var(--rose) 28%, transparent); border-color: var(--rose) }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin: 10px 0 }
+.chart { border: 1px solid var(--line); background: var(--glass-strong); padding: 10px 12px 6px; border-radius: var(--radius) }
+.chart-head { display: flex; justify-content: space-between; color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: .1em; margin-bottom: 4px }
+.chart svg { display: block; width: 100%; height: 130px }
+.chart polyline { fill: none; stroke-width: 1.6; vector-effect: non-scaling-stroke }
+.chart .s0 { stroke: var(--rose) } .chart .s1 { stroke: var(--cyan) } .chart .s2 { stroke: var(--muted) }
+.chart .grid { stroke: var(--line); stroke-width: 1 }
+.chart .cursor { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 3 3 }
+.chart .series { display: flex; gap: 14px; font-size: 11px; color: var(--muted); margin-top: 4px; font-family: var(--mono) }
+.chart .series .s0::before, .chart .series .s1::before, .chart .series .s2::before { content: "■ "; }
+.chart .series .s0::before { color: var(--rose) } .chart .series .s1::before { color: var(--cyan) } .chart .series .s2::before { color: var(--muted) }
+.scrubber { display: flex; gap: 14px; align-items: center; margin: 8px 0 }
+.scrubber input { flex: 1; accent-color: var(--rose) }
+.scrubber .mono { min-width: 160px; color: var(--ink); font-size: 12px }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px 16px; margin: 0; font-size: 12px }
+.legend dt { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .1em }
+.legend dd { margin: 0 0 6px; color: var(--ink) }
+
+footer { display: flex; justify-content: space-between; gap: 20px; padding-top: 22px; color: var(--muted); font-size: 10px }
+
+@media (max-width: 700px) {
+  main { padding: 18px 14px }
+  .masthead { flex-direction: column }
+  .connection { justify-content: flex-start; text-align: left; max-width: none }
+  .host-form { grid-template-columns: 1fr }
+  table.hosts th:nth-child(4), table.hosts td:nth-child(4), table.hosts th:nth-child(5), table.hosts td:nth-child(5) { display: none }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }

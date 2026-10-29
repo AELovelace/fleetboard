@@ -1,0 +1,13 @@
+[package]
+name = "fleetboard-proto"
+description = "Wire types shared by the Fleetboard client and server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }   # (de)serialisation derive macros for every wire type
+
+[dev-dependencies]
+serde_json = "1"                                   # round-trip tests only; the crate itself does no I/O

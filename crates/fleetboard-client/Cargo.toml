@@ -1,0 +1,31 @@
+[package]
+name = "fleetboard-client"
+description = "The small agent every machine runs: answers /healthz and /stats with its live system stats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "fleetboard-client"
+path = "src/main.rs"
+
+[dependencies]
+fleetboard-proto = { path = "../fleetboard-proto" }   # the Snapshot and Health wire types
+axum = "0.8"                                           # the HTTP server
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net"] }
+serde = { version = "1", features = ["derive"] }       # config file structs
+serde_json = "1"                                       # `once` prints a Snapshot as JSON
+toml = "0.8"                                           # client.toml
+clap = { version = "4", features = ["derive"] }        # subcommands and --config
+sysinfo = "0.33"                                       # CPU, memory, disks, network, host facts, temperatures
+subtle = "2"                                           # constant-time token comparison
+tracing = "0.1"                                        # logging
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+anyhow = "1"                                           # error context in main
+rand = "0.8"                                           # gen-token
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }       # drive the router in tests without a socket
+http-body-util = "0.1"                                 # read response bodies in tests
+tempfile = "3"                                         # config files in tests
