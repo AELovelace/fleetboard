@@ -19,11 +19,16 @@ serde_json = "1"                                       # `once` prints a Snapsho
 toml = "0.8"                                           # client.toml
 clap = { version = "4", features = ["derive"] }        # subcommands and --config
 sysinfo = "0.33"                                       # CPU, memory, disks, network, host facts, temperatures
+nvml-wrapper = "0.10"                                  # NVIDIA cards via the driver's NVML library (loaded at run time)
 subtle = "2"                                           # constant-time token comparison
 tracing = "0.1"                                        # logging
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 anyhow = "1"                                           # error context in main
 rand = "0.8"                                           # gen-token
+
+[target.'cfg(windows)'.dependencies]
+# GPU performance counters (PDH) and adapter descriptions (DXGI) for AMD and Intel cards on Windows
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Performance", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }       # drive the router in tests without a socket

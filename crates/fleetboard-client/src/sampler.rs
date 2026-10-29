@@ -192,7 +192,9 @@ impl Sampler {
                 })
             })
             .collect();
-        let gpus = self.gpus.iter_mut().flat_map(|g| g.collect()).collect();
+        let mut gpus: Vec<fleetboard_proto::Gpu> =
+            self.gpus.iter_mut().flat_map(|g| g.collect()).collect();
+        crate::gpu::renumber(&mut gpus); // unique indices across NVML and AMD cards
 
         Snapshot {
             schema: SCHEMA,

@@ -1,0 +1,6 @@
+# Everything is text with LF endings, whatever the OS of the person committing: the shell
+# scripts and systemd units under deploy/ break with CRLF, and Rust/JS/CSS don't care.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.ico binary
