@@ -23,6 +23,7 @@ use super::GpuCollector;
 const VENDOR_AMD: u32 = 0x1002;
 const VENDOR_NVIDIA: u32 = 0x10de;
 const VENDOR_INTEL: u32 = 0x8086;
+const VENDOR_MICROSOFT: u32 = 0x1414; // the Basic Render Driver (WARP)
 
 /// One adapter as DXGI describes it.
 #[derive(Debug, Clone, PartialEq)]
@@ -92,19 +93,25 @@ pub fn adapters() -> Vec<Adapter> {
             let Ok(desc) = adapter.GetDesc1() else {
                 continue;
             };
-            if desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0 {
-                continue; // "Microsoft Basic Render Driver"
-            }
             let len = desc
                 .Description
                 .iter()
                 .position(|&c| c == 0)
                 .unwrap_or(desc.Description.len());
+            let name = String::from_utf16_lossy(&desc.Description[..len])
+                .trim()
+                .to_string();
+            // Microsoft's software renderer: flagged on most machines, but a headless server can list
+            // "Microsoft Basic Render Driver" without the flag, so the vendor id and name are checked too.
+            if desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0
+                || desc.VendorId == VENDOR_MICROSOFT
+                || name.contains("Basic Render")
+            {
+                continue;
+            }
             out.push(Adapter {
                 luid: (desc.AdapterLuid.HighPart, desc.AdapterLuid.LowPart),
-                name: String::from_utf16_lossy(&desc.Description[..len])
-                    .trim()
-                    .to_string(),
+                name,
                 vendor_id: desc.VendorId,
                 vram_total: desc.DedicatedVideoMemory as u64,
             });
