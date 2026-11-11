@@ -15,6 +15,7 @@ use crate::addr::HostAddr;
 use crate::bucket::{Bucket, SampleRow};
 use crate::db::{Db, Host};
 use crate::ring::Ring;
+use crate::wazuh::{AlertLine, AlertLog, HostAlerts, WazuhConfig};
 
 pub const POLL_SECONDS: u64 = 2;
 pub const POLL_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -32,6 +33,7 @@ pub struct HostState {
     pub latest: Option<Snapshot>, // kept while down so the card still shows facts
     pub ring: Ring,
     pub bucket: Bucket,
+    alerts: HostAlerts, // each sensor's Wazuh level
     next_poll: Instant,
 }
 
@@ -47,6 +49,7 @@ impl HostState {
             latest: None,
             ring: Ring::default(),
             bucket,
+            alerts: HostAlerts::new(),
             next_poll: Instant::now(),
         }
     }
@@ -87,10 +90,20 @@ pub struct Poller {
     hosts: Mutex<Vec<HostState>>,
     tx: broadcast::Sender<Arc<LiveEvent>>,
     db: Db,
+    wazuh: Option<(WazuhConfig, AlertLog)>, // None when alerts are off
 }
 
 impl Poller {
     pub fn new(db: Db, token: String, hosts: Vec<Host>) -> Arc<Self> {
+        Self::with_wazuh(db, token, hosts, WazuhConfig::default())
+    }
+
+    /// Like `new`, and checks every temperature against `wazuh` when it is enabled.
+    pub fn with_wazuh(db: Db, token: String, hosts: Vec<Host>, wazuh: WazuhConfig) -> Arc<Self> {
+        let wazuh = wazuh.enabled.then(|| {
+            let log = AlertLog::new(&wazuh);
+            (wazuh, log)
+        });
         let client = reqwest::Client::builder()
             .timeout(POLL_TIMEOUT)
             .pool_max_idle_per_host(2)
@@ -103,6 +116,7 @@ impl Poller {
             hosts: Mutex::new(hosts.into_iter().map(HostState::new).collect()),
             tx,
             db,
+            wazuh,
         })
     }
 
@@ -222,6 +236,7 @@ impl Poller {
                 .await;
         let now = crate::now_unix();
         let mut rows = Vec::new();
+        let mut alerts: Vec<AlertLine> = Vec::new();
         {
             let mut guard = self.lock();
             for o in outcomes {
@@ -245,6 +260,9 @@ impl Poller {
                         if let Some(row) = s.bucket.push(now, &snap) {
                             rows.push(row);
                         }
+                        if let Some((rules, _)) = &self.wazuh {
+                            alerts.extend(rules.evaluate(&s.host, &snap, &mut s.alerts, now));
+                        }
                         s.latest = Some(snap);
                         s.next_poll = now_i + Duration::from_secs(POLL_SECONDS);
                     }
@@ -262,6 +280,9 @@ impl Poller {
         }
         let event = self.current_event();
         let _ = self.tx.send(event); // no listeners is fine
+        if let Some((_, log)) = &self.wazuh {
+            log.write(&alerts);
+        }
         if let Err(e) = self.db.insert_samples(&rows) {
             tracing::warn!("couldn't store samples: {e}");
         }

@@ -4,7 +4,7 @@
 #   install-server.sh --token TOKEN [--bind 127.0.0.1:9281] [--binary PATH|URL] [--version TAG] [--dry-run]
 #   install-server.sh --check          # installed, running, answering?
 #   install-server.sh --uninstall      # remove the service and binary (keeps the database and config)
-#   install-server.sh --keep-options   # reinstall or update, keeping /etc/fleetboard/server.env
+#   install-server.sh --keep-options   # reinstall or update, keeping server.env and server.toml
 #
 # It downloads the latest release binary (or takes --binary), verifies SHA256SUMS, writes the token to
 # /etc/fleetboard/server.env (0640), creates the fleetboard user and /var/lib/fleetboard for the
@@ -66,7 +66,7 @@ do_uninstall() {
   sys systemctl disable --now "$NAME" 2>/dev/null || true
   sys rm -f "$UNIT" "$BIN"
   sys systemctl daemon-reload
-  note "left in place: $ENV_FILE, $CONF and the database in $STATE"
+  note "left in place: $ENV_FILE, $CONF, the database in $STATE and /var/log/fleetboard"
 }
 
 fetch_binary() {
@@ -109,11 +109,33 @@ FLEETBOARD_TOKEN=$TOKEN
 EOF
     sys chown root:"$USER_NAME" "$ENV_FILE"
   fi
+  if [[ $KEEP == 1 && -f $CONF ]]; then note "keeping the existing $CONF (--keep-options)"; return; fi
   put 0644 "$CONF" <<EOF
 # Fleetboard server. The token lives in server.env (0640), not here.
 bind = "$BIND"
 db = "$STATE/fleetboard.db"
 log = "info"
+
+# Temperature alerts for Wazuh (docs/WAZUH.md). Set enabled = true, then add
+# deploy/wazuh/ossec-agent.conf.xml to this box's agent and fleetboard_rules.xml to the manager.
+[wazuh]
+enabled = false
+log = "/var/log/fleetboard/wazuh-alerts.json"
+hysteresis_c = 3       # a level drops only once the sensor is this far below its threshold
+repeat_minutes = 30    # say it again while a sensor stays hot (0 = only when the level changes)
+recovered_level = 3    # level of the "back to normal" line (0 = don't send one)
+
+# The first rule whose sensors and hosts match a temperature decides its level (1-15).
+# sensors: pieces of the sensor label, any case ("gpu", "tctl", "nvme"); hosts: names from the
+# Hosts tab or hostnames. Empty means all.
+[[wazuh.temperature]]
+name = "GPUs"
+sensors = ["gpu"]
+thresholds = [ { at_c = 85, level = 7 }, { at_c = 95, level = 12 } ]
+
+[[wazuh.temperature]]
+name = "Everything else"
+thresholds = [ { at_c = 80, level = 5 }, { at_c = 90, level = 10 }, { at_c = 100, level = 12 } ]
 EOF
 }
 
@@ -138,6 +160,9 @@ TimeoutStopSec=15
 # The database directory, created and owned for us.
 StateDirectory=fleetboard
 StateDirectoryMode=0750
+# The Wazuh alert file goes in /var/log/fleetboard (the Wazuh agent reads it as root).
+LogsDirectory=fleetboard
+LogsDirectoryMode=0755
 # Hardening: it only needs the network and its state directory.
 NoNewPrivileges=true
 ProtectSystem=strict

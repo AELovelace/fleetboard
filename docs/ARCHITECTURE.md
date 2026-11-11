@@ -36,6 +36,11 @@
   channel for the streams, one `RingPoint` per host (`ring.rs`, 300 points = 10 minutes) and a
   contribution to the host's current ten-second `Bucket` (`bucket.rs`); a finished bucket is one
   row in SQLite.
+- `wazuh.rs`: when `[wazuh]` is enabled, every successful poll checks each sensor and GPU
+  temperature against the `[[wazuh.temperature]]` rules (the first matching rule decides), keeps the
+  current level per host and sensor in `HostState`, and appends a JSON line for each change to the
+  file the Wazuh agent reads. The file is written after the host lock is released. See
+  [WAZUH.md](WAZUH.md).
 - `db.rs`: SQLite in WAL mode behind a mutex. `hosts`, `samples_10s` (compact columns for the
   charted series plus a JSON column for every GPU) and `audit`. `history()` downsamples in SQL
   with `GROUP BY ts / step`. Rows older than 24 h are pruned hourly.

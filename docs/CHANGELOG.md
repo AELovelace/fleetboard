@@ -7,6 +7,13 @@ the release workflow copies the top section into the GitHub release notes.
 
 First release.
 
+- **Wazuh temperature alerts**: `[wazuh]` and `[[wazuh.temperature]]` in `server.toml` set
+  which temperature is which Wazuh level, per sensor and per host, with hysteresis, repeats and a
+  "recovered" line. The server appends JSON lines to `/var/log/fleetboard/wazuh-alerts.json`
+  for the local Wazuh agent; `deploy/wazuh/` has the agent snippet and the manager's rules.
+  `install-server.sh` writes an example section and `LogsDirectory=fleetboard`; with
+  `--keep-options` it now keeps `server.toml` as well as `server.env`.
+
 - **Client**: CPU (total, per core, load averages, clock), memory and swap, real disks, network
   rates, temperatures; GPUs through NVML (NVIDIA, both OSes), amdgpu sysfs (AMD on Linux) and
   Windows performance counters (any vendor; utilisation and VRAM). `/healthz` open, `/stats`

@@ -5,6 +5,9 @@
 //! db = "/var/lib/fleetboard/fleetboard.db"      # Windows default: %ProgramData%\Fleetboard\fleetboard.db
 //! token = "…"                                   # the same shared token every client has
 //! log = "info"
+//!
+//! [wazuh]                                       # optional temperature alerts, see crate::wazuh
+//! enabled = true
 //! ```
 //! `FLEETBOARD_TOKEN`, `FLEETBOARD_BIND` and `FLEETBOARD_DB` win over the file, so the systemd unit
 //! can keep the token in a 0640 env file.
@@ -14,6 +17,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
+
+use crate::wazuh::WazuhConfig;
 
 /// The default port of the server.
 pub const DEFAULT_PORT: u16 = 9281;
@@ -25,6 +30,7 @@ pub struct ServerConfig {
     pub db: PathBuf,
     pub token: String,
     pub log: String,
+    pub wazuh: WazuhConfig,
 }
 
 impl Default for ServerConfig {
@@ -34,6 +40,7 @@ impl Default for ServerConfig {
             db: default_db_path(),
             token: String::new(),
             log: "info".into(),
+            wazuh: WazuhConfig::default(),
         }
     }
 }
@@ -74,6 +81,9 @@ impl ServerConfig {
         };
         cfg.apply_env();
         cfg.bind_addr()?;
+        cfg.wazuh
+            .normalize()
+            .with_context(|| format!("{} isn't valid", path.display()))?;
         Ok(cfg)
     }
 
@@ -139,5 +149,30 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("nope"));
+    }
+
+    #[test]
+    fn the_wazuh_section_is_read_and_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("server.toml");
+        let good = r#"
+            [wazuh]
+            enabled = true
+            [[wazuh.temperature]]
+            sensors = ["GPU"]
+            thresholds = [{ at_c = 90, level = 12 }, { at_c = 80, level = 6 }]
+        "#;
+        std::fs::write(&p, good).unwrap();
+        let cfg = ServerConfig::load(&p).unwrap();
+        assert!(cfg.wazuh.enabled);
+        let rule = &cfg.wazuh.temperature[0];
+        assert_eq!(rule.sensors, vec!["gpu"]);
+        assert_eq!(rule.thresholds[0].at_c, 80.0); // sorted
+        let bad = "[wazuh]\n[[wazuh.temperature]]\nthresholds = [{ at_c = 90, level = 99 }]\n";
+        std::fs::write(&p, bad).unwrap();
+        assert!(format!("{:#}", ServerConfig::load(&p).unwrap_err()).contains("level 99"));
+        // Without a [wazuh] section alerts are off.
+        std::fs::write(&p, "log = \"info\"\n").unwrap();
+        assert!(!ServerConfig::load(&p).unwrap().wazuh.enabled);
     }
 }

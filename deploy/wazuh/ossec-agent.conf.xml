@@ -1,0 +1,9 @@
+<!--
+  Add this inside <ossec_config> in /var/ossec/etc/ossec.conf on the box that runs
+  fleetboard-server (or in the agent group's agent.conf on the manager), then
+  systemctl restart wazuh-agent. The path must match `log` under [wazuh] in server.toml.
+-->
+<localfile>
+  <log_format>json</log_format>
+  <location>/var/log/fleetboard/wazuh-alerts.json</location>
+</localfile>

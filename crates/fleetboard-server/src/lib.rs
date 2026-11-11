@@ -8,7 +8,8 @@
 //!
 //! Module map: `config` (server.toml), `db` (SQLite), `poller` (the 2-second loop, modelled on
 //! Mnemerynne's balancer poller), `ring` (the last 10 minutes per host), `bucket` (10-second
-//! averages), `api` (routes), `addr` (host:port parsing).
+//! averages), `api` (routes), `addr` (host:port parsing), `wazuh` (temperature alerts for
+//! the Wazuh agent).
 
 pub mod addr;
 pub mod api;
@@ -17,6 +18,7 @@ pub mod config;
 pub mod db;
 pub mod poller;
 pub mod ring;
+pub mod wazuh;
 
 /// The server's own version, shown in the dashboard footer and `/healthz`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

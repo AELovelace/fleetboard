@@ -68,6 +68,14 @@ Access → Remote → add an app: slug `fleetboard`, address `http://127.0.0.1:9
 = your IT group, no certificate, **Rewrite absolute links off**, shown in the window. Details and
 the reasoning in [docs/MNEMERYNNE-SETUP.md](docs/MNEMERYNNE-SETUP.md).
 
+## Temperature alerts in Wazuh
+
+The server can turn hot machines into Wazuh alerts, with thresholds you choose per sensor and per
+host, e.g. GPUs at 85 °C → level 7 and 95 °C → level 12, everything else at 80 °C → 5, 90 °C → 10.
+Set them under `[wazuh]` in `server.toml`, point the box's Wazuh agent at the alert file, and add
+[`deploy/wazuh/fleetboard_rules.xml`](deploy/wazuh/fleetboard_rules.xml) to the manager. Details in
+[docs/WAZUH.md](docs/WAZUH.md).
+
 ## When something's wrong
 
 | You see | It means | Do |

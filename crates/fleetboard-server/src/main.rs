@@ -50,11 +50,12 @@ fn main() -> anyhow::Result<()> {
         Command::CheckConfig => {
             let cfg = ServerConfig::load(&path)?;
             println!(
-                "{} is fine: bind {}, db {}, token {}",
+                "{} is fine: bind {}, db {}, token {}, {}",
                 path.display(),
                 cfg.bind,
                 cfg.db.display(),
-                if cfg.token_set() { "set" } else { "NOT SET" }
+                if cfg.token_set() { "set" } else { "NOT SET" },
+                cfg.wazuh.summary()
             );
             Ok(())
         }
@@ -96,7 +97,15 @@ async fn serve(cfg: ServerConfig) -> anyhow::Result<()> {
         cfg.db.display(),
         hosts.len()
     );
-    let poller = Poller::new(db.clone(), cfg.token.trim().to_string(), hosts);
+    if cfg.wazuh.enabled {
+        tracing::info!("{}", cfg.wazuh.summary());
+    }
+    let poller = Poller::with_wazuh(
+        db.clone(),
+        cfg.token.trim().to_string(),
+        hosts,
+        cfg.wazuh.clone(),
+    );
     let poll_task = tokio::spawn(poller.clone().run());
     let prune_task = tokio::spawn(prune_hourly(db.clone()));
 
