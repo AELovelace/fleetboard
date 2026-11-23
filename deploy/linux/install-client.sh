@@ -174,7 +174,8 @@ UMask=0077
 WantedBy=multi-user.target
 EOF
   sys systemctl daemon-reload
-  sys systemctl enable --now "$NAME"
+  sys systemctl enable "$NAME"
+  sys systemctl restart "$NAME"     # restart, not just start: an update must stop the old binary that is still running
 }
 
 open_firewall() {

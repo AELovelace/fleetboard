@@ -8,6 +8,10 @@ the release workflow copies the top section into the GitHub release notes.
 - **Windows installer**: `-KeepOptions` updates a client without retyping anything (the existing
   `client.toml` and firewall rule are kept), and an update now stops the running service before
   replacing its binary, which the running service had held open.
+- **Linux installers** restart the service instead of `enable --now`, which leaves an
+  already-running service alone: an update put the new binary on disk but kept the old one running
+  until the next reboot. After updating with an older installer, run
+  `systemctl restart fleetboard-server` (or `fleetboard-client`).
 
 ## 0.2.0 - 2026-11-23
 
