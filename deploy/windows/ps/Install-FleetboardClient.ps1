@@ -19,12 +19,17 @@
     Where the client listens; 0.0.0.0:9280 unless this is the Mnemerynne box itself.
 .PARAMETER Name
     A display name for the dashboard; empty = the hostname.
+.PARAMETER KeepOptions
+    Update or reinstall without retyping anything: the existing client.toml (token, bind, name and
+    any hand edits) is kept as it is, and the firewall rule stays unless -ServerIp is given.
 .PARAMETER Check
     Only report whether the service runs and answers.
 .PARAMETER Uninstall
     Stop and remove the service, binary and firewall rule (the config stays).
 .EXAMPLE
     .\Install-FleetboardClient.ps1 -Token "abc…" -ServerIp 10.0.5.2
+.EXAMPLE
+    .\Install-FleetboardClient.ps1 -KeepOptions
 .EXAMPLE
     .\Install-FleetboardClient.ps1 -Check
 #>
@@ -36,6 +41,7 @@ param(
     [string]$Version = "latest",
     [ValidatePattern('^[0-9a-zA-Z\.\[\]:]+:\d{1,5}$')][string]$Bind = "0.0.0.0:9280",
     [string]$Name = "",
+    [switch]$KeepOptions,
     [switch]$Check,
     [switch]$Uninstall
 )
@@ -49,6 +55,21 @@ $DataDir = Join-Path $env:ProgramData "Fleetboard"
 $Config = Join-Path $DataDir "client.toml"
 $LogDir = Join-Path $DataDir "logs"
 $RuleName = "Fleetboard client"
+
+function Get-ConfigValue([string]$Key) {
+    # One `key = "value"` line from the existing client.toml, or "" when it isn't there.
+    $m = Select-String -Path $Config -Pattern "^\s*$Key\s*=\s*`"(.*)`"" | Select-Object -First 1
+    if ($m) { return $m.Matches[0].Groups[1].Value } else { return "" }
+}
+
+if ($KeepOptions -and -not ($Check -or $Uninstall)) {
+    # Updating: everything comes from the config already on this machine.
+    if (-not (Test-Path $Config)) { throw "-KeepOptions needs an existing $Config; install once with -Token and -ServerIp" }
+    $Token = Get-ConfigValue "token"                            # only to check it's there; the file isn't rewritten
+    if (-not $Token) { throw "$Config has no token; reinstall with -Token instead of -KeepOptions" }
+    $kept = Get-ConfigValue "bind"
+    if ($kept) { $Bind = $kept }                                 # the port the service and firewall rule use
+}
 $Port = [int]($Bind -split ":")[-1]
 
 function Write-Step([string]$Text) { Write-Host "`n== $Text" -ForegroundColor Magenta }   # a heading per stage
@@ -71,8 +92,15 @@ function Get-FleetboardRelease {
 }
 
 function Install-FleetboardBinary([string]$Source) {
-    # Copy the exe into Program Files\Fleetboard.
+    # Copy the exe into Program Files\Fleetboard. A running service holds the old exe open, so an
+    # update stops it first (Register-FleetboardService starts it again).
     if ($PSCmdlet.ShouldProcess($Exe, "install binary")) {
+        $svc = Get-Service $ServiceName -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -ne "Stopped") {
+            Stop-Service $ServiceName -Force
+            (Get-Service $ServiceName).WaitForStatus("Stopped", [TimeSpan]::FromSeconds(30))
+            Write-Note "stopped the running service to replace its binary"
+        }
         New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
         Copy-Item -Force $Source $Exe
         Write-Note "installed $Exe ($(& $Exe --version))"
@@ -81,7 +109,11 @@ function Install-FleetboardBinary([string]$Source) {
 
 function Write-FleetboardConfig {
     # client.toml readable by Administrators and LocalService only; a logs folder LocalService may write.
-    if (-not $Token) { throw "-Token is required (make one with: fleetboard-client gen-token)" }
+    if ($KeepOptions) {
+        Write-Note "keeping the existing $Config (-KeepOptions): bind $Bind"
+        return
+    }
+    if (-not $Token) { throw "-Token is required (make one with: fleetboard-client gen-token); or -KeepOptions to keep the existing config" }
     if ($Token.Length -lt 16) { throw "the token must be at least 16 characters" }
     $text = @"
 # Fleetboard client. The token is shared with the server; bind is where it listens.
@@ -112,7 +144,10 @@ function Register-FleetboardService {
 
 function Set-FleetboardFirewallRule {
     # Port 9280 from the Mnemerynne box only.
-    if (-not $ServerIp) { Write-Note "no -ServerIp: firewall left alone (open $Port from the Mnemerynne box yourself)"; return }
+    if (-not $ServerIp) {
+        if (Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue) { Write-Note "no -ServerIp: keeping the existing firewall rule"; return }
+        Write-Note "no -ServerIp: firewall left alone (open $Port from the Mnemerynne box yourself)"; return
+    }
     if ($PSCmdlet.ShouldProcess($RuleName, "firewall rule $Port from $ServerIp")) {
         Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
         New-NetFirewallRule -DisplayName $RuleName -Direction Inbound -Protocol TCP -LocalPort $Port -RemoteAddress $ServerIp -Program $Exe -Action Allow | Out-Null

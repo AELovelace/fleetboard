@@ -66,11 +66,20 @@ bash install-client.sh --check
 .\Install-FleetboardClient.ps1 -Check
 ```
 
+**Updating a client** to the latest release keeps its token, bind, name and firewall rule:
+
+```bash
+bash install-client.sh --keep-options                 # Linux, as root
+```
+```powershell
+.\Install-FleetboardClient.ps1 -KeepOptions           # Windows, administrator PowerShell
+```
+
 Then add each machine under **Hosts** in the dashboard: name, `address[:port]`, **Check**, **Add**.
 A host is only saved once it answers with the token.
 
 Every installer takes `--dry-run` (PowerShell: `-WhatIf`), `--check`, `--uninstall` and
-`--keep-options` (reinstall or update without retyping the token). What they write:
+`--keep-options` (PowerShell: `-KeepOptions`; reinstall or update without retyping the token). What they write:
 
 | Installer | Writes |
 |---|---|

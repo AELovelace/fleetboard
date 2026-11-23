@@ -3,6 +3,12 @@
 All notable changes, newest first. Format after [Keep a Changelog](https://keepachangelog.com/);
 the release workflow copies the top section into the GitHub release notes.
 
+## Unreleased
+
+- **Windows installer**: `-KeepOptions` updates a client without retyping anything (the existing
+  `client.toml` and firewall rule are kept), and an update now stops the running service before
+  replacing its binary, which the running service had held open.
+
 ## 0.2.0 - 2026-11-23
 
 Update the server first (its database moves to schema 2 on start), then the clients when
