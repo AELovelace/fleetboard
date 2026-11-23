@@ -33,6 +33,10 @@ pub struct HostFacts {
     pub arch: String, // "x86_64"
     pub uptime_s: u64,
     pub agent: String, // the client crate's version, e.g. "0.1.0"
+    #[serde(default)]
+    pub listen: Option<String>, // the client's `bind` ("0.0.0.0:9280"), so an audit can spot exposed clients; None from older clients
+    #[serde(default)]
+    pub binary_sha256: Option<String>, // SHA-256 (hex) of the running client binary, to spot unexpected builds
 }
 
 /// Processor load.
@@ -156,6 +160,8 @@ mod tests {
                 arch: "x86_64".into(),
                 uptime_s: 86_400,
                 agent: "0.1.0".into(),
+                listen: Some("0.0.0.0:9280".into()),
+                binary_sha256: Some("ab".repeat(32)),
             },
             cpu: Cpu {
                 percent: 43.5,

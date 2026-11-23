@@ -8,6 +8,7 @@ pub mod errors;
 pub mod history;
 pub mod hosts;
 pub mod live;
+pub mod v1; // the token-authenticated service API Mnemerynne calls for Claude
 
 use std::sync::Arc;
 
@@ -43,6 +44,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/live", get(live::stream))
         .route("/api/ring", get(live::ring))
         .route("/api/history", get(history::history))
+        .nest("/api/v1", v1::router(state.clone())) // service tokens, call log, audited actions
         .fallback(assets::serve)
         .layer(DefaultBodyLimit::max(16 * 1024))
         .layer(middleware::from_fn(headers))

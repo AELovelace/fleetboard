@@ -34,6 +34,31 @@ enum Command {
     GenToken,
     /// Read the config and report what's wrong with it, if anything
     CheckConfig,
+    /// Service tokens for the /api/v1 API (Mnemerynne): add, list, revoke
+    #[command(subcommand)]
+    Token(TokenCommand),
+    /// The newest /api/v1 calls: when, which token, what, the status and how long it took
+    Calls {
+        /// How many to show
+        #[arg(long, default_value_t = 30)]
+        limit: u32,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum TokenCommand {
+    /// Make a token and print it once (only its hash is kept)
+    Add {
+        /// Who holds it, e.g. mnemerynne-read
+        name: String,
+        /// read (the default: reads only) or act (reads and the audited actions)
+        #[arg(long, default_value = "read")]
+        scope: String,
+    },
+    /// Every token: name, scope, first characters, made, last used, revoked
+    List,
+    /// Revoke a token by name; it is refused from its next request on
+    Revoke { name: String },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -59,6 +84,27 @@ fn main() -> anyhow::Result<()> {
             );
             Ok(())
         }
+        Command::Token(cmd) => {
+            let cfg = ServerConfig::load(&path)?;
+            let db = Db::open(&cfg.db)?; // the same database the running server uses (WAL: safe side by side)
+            token_command(&db, cmd)
+        }
+        Command::Calls { limit } => {
+            let cfg = ServerConfig::load(&path)?;
+            let db = Db::open(&cfg.db)?;
+            for c in db.recent_calls((*limit).clamp(1, 1000))? {
+                println!(
+                    "{}  {:<20} {:>3} {:>5} ms  {} {}",
+                    fleetboard_server::time::iso(c.ts),
+                    c.token,
+                    c.status,
+                    c.ms,
+                    c.method,
+                    c.path
+                );
+            }
+            Ok(())
+        }
         Command::Run => {
             let cfg = ServerConfig::load(&path)?;
             let filter =
@@ -76,6 +122,47 @@ fn main() -> anyhow::Result<()> {
             rt.block_on(serve(cfg))
         }
     }
+}
+
+/// `token add | list | revoke` against the server's database.
+fn token_command(db: &Db, cmd: &TokenCommand) -> anyhow::Result<()> {
+    use fleetboard_server::time::iso;
+    use fleetboard_server::tokens;
+    let now = fleetboard_server::now_unix();
+    match cmd {
+        TokenCommand::Add { name, scope } => {
+            let (token, row) = tokens::create(db, name, scope, now).map_err(anyhow::Error::msg)?;
+            println!("{token}");
+            eprintln!(
+                "Token {:?} ({}) made. It is shown only now: paste it into Mnemerynne as the API's credential (Bearer).",
+                row.name, row.scopes
+            );
+        }
+        TokenCommand::List => {
+            for t in db.list_tokens()? {
+                println!(
+                    "{:<24} {:<9} {}…  made {}  last used {}  {}",
+                    t.name,
+                    t.scopes,
+                    t.prefix,
+                    iso(t.created_at),
+                    t.last_used_at.map(iso).unwrap_or_else(|| "never".into()),
+                    t.revoked_at
+                        .map(|r| format!("REVOKED {}", iso(r)))
+                        .unwrap_or_default()
+                );
+            }
+        }
+        TokenCommand::Revoke { name } => {
+            if db.revoke_token(name, now)? {
+                db.audit(now, "local", "token.revoke", name, "")?;
+                println!("Revoked {name}; it is refused from its next request on.");
+            } else {
+                anyhow::bail!("no live token called {name:?} (`token list` shows them)");
+            }
+        }
+    }
+    Ok(())
 }
 
 /// 32 unambiguous characters, the same alphabet the client uses.
@@ -138,7 +225,15 @@ async fn prune_hourly(db: Db) {
     loop {
         interval.tick().await;
         let db = db.clone();
-        match tokio::task::spawn_blocking(move || db.prune(fleetboard_server::now_unix())).await {
+        match tokio::task::spawn_blocking(move || {
+            let now = fleetboard_server::now_unix();
+            if let Err(e) = db.prune_long(now) {
+                tracing::warn!("pruning rollups and API calls failed: {e}"); // hourly 7 d, daily 90 d, calls 90 d
+            }
+            db.prune(now)
+        })
+        .await
+        {
             Ok(Ok(n)) if n > 0 => tracing::info!("pruned {n} old sample row(s)"),
             Ok(Ok(_)) => {}
             Ok(Err(e)) => tracing::warn!("prune failed: {e}"),

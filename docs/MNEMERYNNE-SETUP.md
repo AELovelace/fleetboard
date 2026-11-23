@@ -59,3 +59,25 @@ Mnemerynne's AD snapshot (a few minutes).
 | it loads but every card says `didn't answer in time` | the clients' firewalls don't allow the Mnemerynne box (section 3) |
 | it loads but the Hosts tab says `token: NOT SET` | `/etc/fleetboard/server.env` is missing `FLEETBOARD_TOKEN`; rerun `install-server.sh --token …` |
 | the look doesn't match Erynne | normal when opened in a new tab (no parent frame); embedded it follows Erynne's theme |
+
+## 6. Letting Claude and Erynne use it (API templates)
+
+The Remote app is for people. For Claude (through Mnemerynne's connector) and Erynne's chat,
+Fleetboard has a service API, `/api/v1` ([API.md](API.md)), and the Mnemerynne repo has two
+templates for it: `api-templates/fleetboard.json` (**Fleetboard**, reads) and
+`api-templates/fleetboard-actions.json` (**Fleetboard (changes)**, proposals only).
+
+1. On the box, as the Fleetboard user:
+   ```bash
+   sudo -u fleetboard fleetboard-server token add mnemerynne-read
+   sudo -u fleetboard fleetboard-server token add mnemerynne-act --scope act
+   ```
+   Each prints its token once.
+2. **Access → APIs → Upload template…**, once per file, then pick each and press **Add**.
+3. On **Fleetboard**: paste `mnemerynne-read`'s token as the credential (Bearer), no certificate,
+   the IT group; **Test** *Token check* (`read: true, act: false`). Turn on *Claude can query this*
+   if host inventory may go to Anthropic.
+4. On **Fleetboard (changes)**: paste `mnemerynne-act`'s token, the IT group, and tick **Needs an
+   admin's approval** on *Remove host* (it deletes the host's history).
+5. To cut Mnemerynne off: `sudo -u fleetboard fleetboard-server token revoke mnemerynne-read` (and
+   `-act`). `fleetboard-server calls` shows every call it made.

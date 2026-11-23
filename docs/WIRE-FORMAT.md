@@ -28,6 +28,8 @@ A `Snapshot`; `503 {"detail":"Warming up: no sample yet"}` for the first second 
 | `host.hostname`, `host.name` | string, string\|null | the machine's name and the config's display name |
 | `host.os`, `host.kernel`, `host.arch` | string | "Fedora Linux 42", "6.11.5", "x86_64" |
 | `host.uptime_s`, `host.agent` | int, string | seconds up; the client version |
+| `host.listen` | string\|null | the client's `bind`, e.g. "0.0.0.0:9280" (null from older clients); for the server's client audit |
+| `host.binary_sha256` | string\|null | SHA-256 (hex) of the running client executable, read once at start (null from older clients) |
 | `cpu.percent`, `cpu.per_core[]` | float | utilisation 0–100 |
 | `cpu.cores`, `cpu.model`, `cpu.freq_mhz` | int, string, int\|null | logical cores, model, current clock |
 | `cpu.load1/5/15` | float\|null | Unix load averages, null on Windows |

@@ -1,109 +1,111 @@
 <!--
-  Fleetboard temperature alerts for the Wazuh manager.
+  Fleetboard temperature, disk-full and offline alerts for the Wazuh manager.
   Copy to /var/ossec/etc/rules/fleetboard_rules.xml on the manager and restart it
   (systemctl restart wazuh-manager). The Fleetboard server writes one JSON line per change to
   /var/log/fleetboard/wazuh-alerts.json; the agent on that box reads it (see ossec-agent.conf.xml).
 
   Wazuh can't take a rule's level from the event, so there is one child rule per level: the line's
-  fleetboard.level (set by the thresholds in server.toml) picks the rule, and so the alert level.
+  fleetboard.level (set by the thresholds in server.toml, and disk_level / disk_critical_level /
+  offline_level for disk and offline lines) picks the rule, and so the alert level. Each line carries
+  fleetboard.message, one readable sentence, used as the description; fleetboard.event says which kind.
   The ids 100800-100815 are in the custom range; change them if they clash with your own rules.
 -->
-<group name="fleetboard,temperature,">
+<group name="fleetboard,temperature,disk,offline,">
 
   <rule id="100800" level="0">
     <decoded_as>json</decoded_as>
-    <field name="fleetboard.event">^temperature$</field>
-    <description>Fleetboard: temperature event</description>
+    <field name="fleetboard.event">^temperature$|^disk$|^offline$</field>
+    <description>Fleetboard: temperature, disk or offline event</description>
   </rule>
 
   <rule id="100801" level="1">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^1$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100802" level="2">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^2$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100803" level="3">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^3$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100804" level="4">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^4$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100805" level="5">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^5$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100806" level="6">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^6$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100807" level="7">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^7$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100808" level="8">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^8$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100809" level="9">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^9$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100810" level="10">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^10$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100811" level="11">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^11$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100812" level="12">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^12$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100813" level="13">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^13$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100814" level="14">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^14$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
   <rule id="100815" level="15">
     <if_sid>100800</if_sid>
     <field name="fleetboard.level">^15$</field>
-    <description>Fleetboard: $(fleetboard.host) $(fleetboard.sensor) is $(fleetboard.celsius) C ($(fleetboard.state), rule $(fleetboard.rule))</description>
+    <description>Fleetboard: $(fleetboard.message)</description>
   </rule>
 
 </group>

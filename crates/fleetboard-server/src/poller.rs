@@ -15,7 +15,12 @@ use crate::addr::HostAddr;
 use crate::bucket::{Bucket, SampleRow};
 use crate::db::{Db, Host};
 use crate::ring::Ring;
-use crate::wazuh::{AlertLine, AlertLog, HostAlerts, WazuhConfig};
+use crate::rollup::{RollupRow, Rollups};
+use crate::thresholds::Thresholds;
+use crate::wazuh::{AlertLine, AlertLog, DiskAlerts, HostAlerts, WazuhConfig};
+
+/// How often the open hours and days are written to the database (they merge on conflict).
+pub const ROLLUP_FLUSH_SECONDS: u64 = 300;
 
 pub const POLL_SECONDS: u64 = 2;
 pub const POLL_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -33,13 +38,27 @@ pub struct HostState {
     pub latest: Option<Snapshot>, // kept while down so the card still shows facts
     pub ring: Ring,
     pub bucket: Bucket,
-    alerts: HostAlerts, // each sensor's Wazuh level
+    pub rollups: Rollups,        // the open hour and day for the long history
+    pub last_ok_at: Option<u64>, // server clock of the last good answer (since this start)
+    pub down_since: Option<u64>, // when it stopped answering; None while it answers
+    alerts: HostAlerts,          // each sensor's Wazuh level
+    disk_alerts: DiskAlerts,     // each disk's Wazuh stage
+    offline_alert: Option<u64>,  // Some(last line sent) while an offline alert stands
     next_poll: Instant,
+}
+
+/// One host as the API sees it: the dashboard's row plus when it last answered.
+#[derive(Debug, Clone)]
+pub struct HostStatus {
+    pub live: HostLive,
+    pub last_ok_at: Option<u64>,
+    pub down_since: Option<u64>,
 }
 
 impl HostState {
     fn new(host: Host) -> Self {
         let bucket = Bucket::new(host.id);
+        let rollups = Rollups::new(host.id);
         Self {
             host,
             reachable: None,
@@ -49,7 +68,12 @@ impl HostState {
             latest: None,
             ring: Ring::default(),
             bucket,
+            rollups,
+            last_ok_at: None,
+            down_since: None,
             alerts: HostAlerts::new(),
+            disk_alerts: DiskAlerts::new(),
+            offline_alert: None,
             next_poll: Instant::now(),
         }
     }
@@ -91,6 +115,8 @@ pub struct Poller {
     tx: broadcast::Sender<Arc<LiveEvent>>,
     db: Db,
     wazuh: Option<(WazuhConfig, AlertLog)>, // None when alerts are off
+    thresholds: Mutex<Thresholds>, // disk/offline limits, changed by the API's Set threshold
+    rollups_flushed_at: Mutex<u64>, // when the open hours and days last went to disk
 }
 
 impl Poller {
@@ -110,6 +136,7 @@ impl Poller {
             .build()
             .expect("reqwest client");
         let (tx, _) = broadcast::channel(32);
+        let thresholds = Mutex::new(Thresholds::load(&db)); // stored limits, defaults until set
         Arc::new(Self {
             client,
             token,
@@ -117,7 +144,32 @@ impl Poller {
             tx,
             db,
             wazuh,
+            thresholds,
+            rollups_flushed_at: Mutex::new(crate::now_unix()),
         })
+    }
+
+    /// The limits the audit operations and the Wazuh disk/offline alerts use now.
+    pub fn thresholds(&self) -> Thresholds {
+        *self.thresholds.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Use new limits from the next poll on (the API saved them first).
+    pub fn set_thresholds(&self, t: Thresholds) {
+        *self.thresholds.lock().unwrap_or_else(|e| e.into_inner()) = t;
+    }
+
+    /// Every host with when it last answered and since when it is down, for the API.
+    pub fn statuses(&self) -> Vec<HostStatus> {
+        let now = crate::now_unix();
+        self.lock()
+            .iter()
+            .map(|s| HostStatus {
+                live: s.view(now),
+                last_ok_at: s.last_ok_at,
+                down_since: s.down_since,
+            })
+            .collect()
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Vec<HostState>> {
@@ -236,7 +288,20 @@ impl Poller {
                 .await;
         let now = crate::now_unix();
         let mut rows = Vec::new();
+        let mut rollup_rows: Vec<RollupRow> = Vec::new();
         let mut alerts: Vec<AlertLine> = Vec::new();
+        let th = self.thresholds();
+        let flush_rollups = {
+            let mut at = self
+                .rollups_flushed_at
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let due = now.saturating_sub(*at) >= ROLLUP_FLUSH_SECONDS;
+            if due {
+                *at = now;
+            }
+            due
+        };
         {
             let mut guard = self.lock();
             for o in outcomes {
@@ -260,8 +325,26 @@ impl Poller {
                         if let Some(row) = s.bucket.push(now, &snap) {
                             rows.push(row);
                         }
+                        rollup_rows.extend(s.rollups.push(now, &snap)); // an hour or day that just closed
+                        s.last_ok_at = Some(now);
+                        s.down_since = None;
                         if let Some((rules, _)) = &self.wazuh {
                             alerts.extend(rules.evaluate(&s.host, &snap, &mut s.alerts, now));
+                            alerts.extend(rules.evaluate_disks(
+                                &s.host,
+                                &snap,
+                                &th,
+                                &mut s.disk_alerts,
+                                now,
+                            ));
+                            alerts.extend(rules.evaluate_offline(
+                                &s.host,
+                                None,
+                                "",
+                                &th,
+                                &mut s.offline_alert,
+                                now,
+                            ));
                         }
                         s.latest = Some(snap);
                         s.next_poll = now_i + Duration::from_secs(POLL_SECONDS);
@@ -274,8 +357,22 @@ impl Poller {
                         s.error = reason;
                         s.latency_ms = None;
                         s.next_poll = now_i + Duration::from_secs(DOWN_POLL_SECONDS);
+                        let since = *s.down_since.get_or_insert(now);
+                        if let Some((rules, _)) = &self.wazuh {
+                            alerts.extend(rules.evaluate_offline(
+                                &s.host,
+                                Some(since),
+                                &s.error,
+                                &th,
+                                &mut s.offline_alert,
+                                now,
+                            ));
+                        }
                     }
                 }
+            }
+            if flush_rollups {
+                rollup_rows.extend(guard.iter_mut().flat_map(|s| s.rollups.drain()));
             }
         }
         let event = self.current_event();
@@ -285,6 +382,9 @@ impl Poller {
         }
         if let Err(e) = self.db.insert_samples(&rows) {
             tracing::warn!("couldn't store samples: {e}");
+        }
+        if let Err(e) = self.db.upsert_rollups(&rollup_rows) {
+            tracing::warn!("couldn't store the hourly and daily rollups: {e}");
         }
     }
 
@@ -330,13 +430,17 @@ impl Poller {
 
     /// Flush every open window (shutdown).
     pub fn flush(&self) {
-        let rows: Vec<SampleRow> = self
-            .lock()
-            .iter_mut()
-            .filter_map(|s| s.bucket.finish())
-            .collect();
+        let (rows, rollups): (Vec<SampleRow>, Vec<RollupRow>) = {
+            let mut guard = self.lock();
+            let rows = guard.iter_mut().filter_map(|s| s.bucket.finish()).collect();
+            let rollups = guard.iter_mut().flat_map(|s| s.rollups.drain()).collect();
+            (rows, rollups)
+        };
         if let Err(e) = self.db.insert_samples(&rows) {
             tracing::warn!("couldn't store the last windows: {e}");
+        }
+        if let Err(e) = self.db.upsert_rollups(&rollups) {
+            tracing::warn!("couldn't store the last rollups: {e}");
         }
     }
 }

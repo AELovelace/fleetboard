@@ -28,6 +28,7 @@ rust-embed = { version = "8", features = ["interpolate-folder-path"] }   # the d
 async-stream = "0.3"                                   # the SSE generator
 futures = "0.3"                                        # join_all over the hosts each tick
 mime_guess = "2"                                       # content types for the embedded assets
+sha2 = "0.11"                                          # service tokens are stored as SHA-256 hashes
 
 [dev-dependencies]
 fleetboard-client = { path = "../fleetboard-client" }  # the integration test polls a real client router

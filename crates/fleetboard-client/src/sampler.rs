@@ -91,6 +91,22 @@ pub struct Sampler {
     skip_mounts: Vec<String>,
     model: String,
     cores: u16,
+    listen: String,                // cfg.bind, reported in HostFacts.listen
+    binary_sha256: Option<String>, // of our own executable; None if it couldn't be read
+}
+
+/// SHA-256 (lowercase hex) of the running executable, so the server can tell which build a host
+/// runs and flag one that differs from the rest. Read once at start: a few MB, a few milliseconds.
+pub fn own_binary_sha256() -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let path = std::env::current_exe().ok()?; // the binary that is running now
+    let bytes = std::fs::read(path).ok()?;
+    Some(
+        Sha256::digest(&bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect(),
+    )
 }
 
 impl Sampler {
@@ -117,6 +133,8 @@ impl Sampler {
             skip_mounts: cfg.skip_mounts.clone(),
             model,
             cores,
+            listen: cfg.bind.clone(),
+            binary_sha256: own_binary_sha256(),
         }
     }
 
@@ -211,6 +229,8 @@ impl Sampler {
                 arch: System::cpu_arch(),
                 uptime_s: System::uptime(),
                 agent: crate::VERSION.to_string(),
+                listen: Some(self.listen.clone()), // where /stats answers, for the server's client audit
+                binary_sha256: self.binary_sha256.clone(), // worked out once at start
             },
             cpu,
             memory,

@@ -21,6 +21,7 @@ clap = { version = "4", features = ["derive"] }        # subcommands and --confi
 sysinfo = "0.33"                                       # CPU, memory, disks, network, host facts, temperatures
 nvml-wrapper = "0.10"                                  # NVIDIA cards via the driver's NVML library (loaded at run time)
 subtle = "2"                                           # constant-time token comparison
+sha2 = "0.11"                                          # SHA-256 of our own binary, reported to the server's client audit
 tracing = "0.1"                                        # logging
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 anyhow = "1"                                           # error context in main

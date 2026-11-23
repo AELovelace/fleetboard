@@ -11,15 +11,31 @@ Two small Rust programs, one repo:
   routes: `/healthz` (who am I) and `/stats` (the full picture, behind a shared bearer token).
   One static-ish binary per OS, no runtime to install.
 - **fleetboard-server** runs on the Mnemerynne box. It polls every client, keeps ten minutes in
-  memory and 24 hours of ten-second averages in SQLite, and serves the dashboard and its live
-  stream. It binds to 127.0.0.1 and trusts Mnemerynne's proxy.
+  memory, 24 hours of ten-second averages, 7 days hourly and 90 days daily in SQLite, and serves
+  the dashboard and its live stream. It binds to 127.0.0.1 and trusts Mnemerynne's proxy. It also
+  has a token-authenticated **service API** (`/api/v1`) so Claude, through Mnemerynne, can read
+  the fleet and propose changes a person approves: see [docs/API.md](docs/API.md).
 
 ## Ports
 
 | Port | What | Reachable from |
 |---|---|---|
 | 9280 | client: `/healthz` (open), `/stats` (bearer token) | the Mnemerynne box only (the installers add the firewall rule) |
-| 9281 | server: dashboard, `/api/*`, `/healthz` | this machine only; people open `https://<erynne>/remote/fleetboard/` |
+| 9281 | server: dashboard, `/api/*`, `/healthz`; `/api/v1/*` (service token) | this machine only; people open `https://<erynne>/remote/fleetboard/`, Mnemerynne calls `http://127.0.0.1:9281/api/v1` |
+
+## Claude and Mnemerynne's API templates
+
+Make two service tokens on the box and give them to Mnemerynne's two Fleetboard API templates
+(`api-templates/fleetboard.json` and `fleetboard-actions.json` in the Mnemerynne repo):
+
+```bash
+sudo -u fleetboard fleetboard-server token add mnemerynne-read               # reads only
+sudo -u fleetboard fleetboard-server token add mnemerynne-act --scope act    # reads + changes
+```
+
+They are not the shared client token, are stored only as hashes, and are revoked with
+`fleetboard-server token revoke NAME`. Every call is logged (`fleetboard-server calls`) and every
+change is audited with the reason. Details in [docs/API.md](docs/API.md).
 
 ## Install
 
@@ -68,10 +84,12 @@ Access → Remote → add an app: slug `fleetboard`, address `http://127.0.0.1:9
 = your IT group, no certificate, **Rewrite absolute links off**, shown in the window. Details and
 the reasoning in [docs/MNEMERYNNE-SETUP.md](docs/MNEMERYNNE-SETUP.md).
 
-## Temperature alerts in Wazuh
+## Temperature, disk-full and offline alerts in Wazuh
 
 The server can turn hot machines into Wazuh alerts, with thresholds you choose per sensor and per
 host, e.g. GPUs at 85 °C → level 7 and 95 °C → level 12, everything else at 80 °C → 5, 90 °C → 10.
+Full disks (90 % → 7, 97 % → 12 by default) and hosts silent for 10 minutes (→ 10) are alerted
+too, which covers machines without a Wazuh agent of their own.
 Set them under `[wazuh]` in `server.toml`, point the box's Wazuh agent at the alert file, and add
 [`deploy/wazuh/fleetboard_rules.xml`](deploy/wazuh/fleetboard_rules.xml) to the manager. Details in
 [docs/WAZUH.md](docs/WAZUH.md).

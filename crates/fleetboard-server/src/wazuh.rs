@@ -1,4 +1,10 @@
-//! Temperature alerts for Wazuh.
+//! Temperature, disk-full and offline alerts for Wazuh.
+//!
+//! Disks and offline hosts use the thresholds kept in the database (`crate::thresholds`, changed
+//! with the API's *Set threshold* action): a disk at `disk_pct` is at `disk_level`, at
+//! `disk_critical_pct` at `disk_critical_level`; a host that hasn't answered for `offline_minutes`
+//! is at `offline_level`. A level of 0 turns that kind off. That covers machines without a Wazuh
+//! agent of their own.
 //!
 //! Every poll, each temperature a host reports (its sensors and its GPUs) is checked against the
 //! `[[wazuh.temperature]]` rules in `server.toml`. Each rule says which sensors and hosts it covers
@@ -52,6 +58,10 @@ pub struct WazuhConfig {
     pub recovered_level: u8,
     pub max_log_mb: u64, // the file is moved to `<log>.1` past this size; 0 = never
     pub temperature: Vec<TempRule>,
+    pub disk_level: u8, // a disk at the threshold's disk_pct; 0 = no disk alerts
+    pub disk_critical_level: u8, // a disk at disk_critical_pct; 0 = only the first level
+    pub disk_hysteresis_pct: f32, // a disk's level drops once it is this far below the limit
+    pub offline_level: u8, // a host silent for offline_minutes; 0 = no offline alerts
 }
 
 /// One set of thresholds and the sensors and hosts it applies to.
@@ -100,6 +110,10 @@ impl Default for WazuhConfig {
                     },
                 ],
             }],
+            disk_level: 7,
+            disk_critical_level: 12,
+            disk_hysteresis_pct: 2.0,
+            offline_level: 10,
         }
     }
 }
@@ -125,6 +139,18 @@ impl WazuhConfig {
         }
         if self.recovered_level > MAX_LEVEL {
             bail!("[wazuh] recovered_level must be 0–{MAX_LEVEL}");
+        }
+        for (key, level) in [
+            ("disk_level", self.disk_level),
+            ("disk_critical_level", self.disk_critical_level),
+            ("offline_level", self.offline_level),
+        ] {
+            if level > MAX_LEVEL {
+                bail!("[wazuh] {key} must be 0–{MAX_LEVEL}");
+            }
+        }
+        if !self.disk_hysteresis_pct.is_finite() || self.disk_hysteresis_pct < 0.0 {
+            bail!("[wazuh] disk_hysteresis_pct must be 0 or more");
         }
         if self.enabled && self.log.as_os_str().is_empty() {
             bail!("[wazuh] log must name a file");
@@ -182,9 +208,12 @@ impl WazuhConfig {
             })
             .collect();
         format!(
-            "wazuh alerts to {}: {}",
+            "wazuh alerts to {}: {}; disks level {}/{}, offline level {}",
             self.log.display(),
-            rules.join("; ")
+            rules.join("; "),
+            self.disk_level,
+            self.disk_critical_level,
+            self.offline_level
         )
     }
 }
@@ -231,20 +260,31 @@ pub struct AlertLine {
     pub fleetboard: AlertBody,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, Default)]
 pub struct AlertBody {
-    pub event: &'static str, // "temperature"
+    pub event: &'static str, // "temperature", "disk" or "offline"
     pub state: &'static str, // "raised", "lowered", "ongoing" or "recovered"
     pub level: u8,           // the Wazuh level the manager's rules give this line
     pub previous_level: u8,  // 0 = it wasn't alerting
     pub host: String,
     pub address: String,
     pub hostname: String,
-    pub sensor: String,
-    pub celsius: f32,
+    pub sensor: String, // temperature: the sensor's label; disk: the mount; offline: "client"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub celsius: Option<f32>, // temperature lines
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub threshold_c: Option<f32>, // the threshold now reached; None once recovered
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub used_pct: Option<f32>, // disk lines
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threshold_pct: Option<f32>, // disk lines: the limit now reached
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub down_minutes: Option<u64>, // offline lines
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>, // offline lines: why the poll failed
     pub rule: String,
-    pub ts: u64, // the server's unix seconds
+    pub message: String, // one readable sentence; the manager's rules use it as the description
+    pub ts: u64,         // the server's unix seconds
 }
 
 impl WazuhConfig {
@@ -312,6 +352,7 @@ impl WazuhConfig {
             if level == 0 {
                 continue;
             }
+            let celsius = (r.celsius * 10.0).round() / 10.0;
             out.push(AlertLine {
                 fleetboard: AlertBody {
                     event: "temperature",
@@ -321,15 +362,169 @@ impl WazuhConfig {
                     host: host.name.clone(),
                     address: host.address.clone(),
                     hostname: snap.host.hostname.clone(),
+                    message: format!(
+                        "{} {} is {celsius} C ({state}, rule {})",
+                        host.name, r.sensor, rule.name
+                    ),
                     sensor: r.sensor,
-                    celsius: (r.celsius * 10.0).round() / 10.0,
+                    celsius: Some(celsius),
                     threshold_c: new.map(|i| rule.thresholds[i].at_c),
                     rule: rule.name.clone(),
                     ts: now,
+                    ..Default::default()
                 },
             });
         }
         out
+    }
+}
+
+/// What the server remembers about one disk of one host: 0 fine, 1 over disk_pct, 2 over
+/// disk_critical_pct, and when the last line was sent.
+pub type DiskAlerts = HashMap<String, (u8, u64)>;
+
+impl WazuhConfig {
+    /// Check each disk of one snapshot against the thresholds; say what changed (or still holds
+    /// after `repeat_minutes`). Hysteresis works like the temperatures': a disk at stage 1 stays
+    /// there until it is `disk_hysteresis_pct` below `disk_pct`.
+    pub fn evaluate_disks(
+        &self,
+        host: &Host,
+        snap: &Snapshot,
+        th: &crate::thresholds::Thresholds,
+        alerts: &mut DiskAlerts,
+        now: u64,
+    ) -> Vec<AlertLine> {
+        let mut out = Vec::new();
+        if self.disk_level == 0 {
+            alerts.clear();
+            return out;
+        }
+        let limits = [th.disk_pct as f32, th.disk_critical_pct as f32]; // stage 1 and stage 2
+        let level_of = |stage: u8| match stage {
+            0 => 0,
+            1 => self.disk_level,
+            _ if self.disk_critical_level == 0 => self.disk_level, // no second level: stay at the first
+            _ => self.disk_critical_level,
+        };
+        alerts.retain(|mount, _| snap.disks.iter().any(|d| d.mount == *mount)); // forget unplugged disks
+        for d in snap.disks.iter().filter(|d| d.total_bytes > 0) {
+            let pct = (d.used_bytes as f64 * 100.0 / d.total_bytes as f64) as f32;
+            let (cur, last_sent) = alerts.get(&d.mount).copied().unwrap_or((0, 0));
+            let new = (1..=2u8)
+                .rev()
+                .find(|&s| {
+                    let slack = if s <= cur {
+                        self.disk_hysteresis_pct
+                    } else {
+                        0.0
+                    };
+                    pct >= limits[s as usize - 1] - slack
+                })
+                .unwrap_or(0);
+            let repeat = self.repeat_minutes.saturating_mul(60);
+            let state = if new == cur {
+                (new > 0 && repeat > 0 && now.saturating_sub(last_sent) >= repeat)
+                    .then_some("ongoing")
+            } else if new == 0 {
+                Some("recovered")
+            } else if new > cur {
+                Some("raised")
+            } else {
+                Some("lowered")
+            };
+            let Some(state) = state else {
+                alerts.insert(d.mount.clone(), (new, last_sent));
+                continue;
+            };
+            alerts.insert(d.mount.clone(), (new, now));
+            let level = if new > 0 {
+                level_of(new)
+            } else {
+                self.recovered_level
+            };
+            if level == 0 || level_of(new) == level_of(cur) && state != "ongoing" && new > 0 {
+                continue; // e.g. stage 1 → 2 with no critical level: nothing new to say
+            }
+            let pct = (pct * 10.0).round() / 10.0;
+            out.push(AlertLine {
+                fleetboard: AlertBody {
+                    event: "disk",
+                    state,
+                    level,
+                    previous_level: level_of(cur),
+                    host: host.name.clone(),
+                    address: host.address.clone(),
+                    hostname: snap.host.hostname.clone(),
+                    sensor: d.mount.clone(),
+                    used_pct: Some(pct),
+                    threshold_pct: (new > 0).then(|| limits[new as usize - 1]),
+                    rule: "disk".into(),
+                    message: format!("{} disk {} is {pct}% full ({state})", host.name, d.mount),
+                    ts: now,
+                    ..Default::default()
+                },
+            });
+        }
+        out
+    }
+
+    /// Offline alerts: `down_since` is when the host stopped answering (None while it answers).
+    /// `alerting` is this host's memory: Some(last_sent) while an offline alert stands.
+    pub fn evaluate_offline(
+        &self,
+        host: &Host,
+        down_since: Option<u64>,
+        error: &str,
+        th: &crate::thresholds::Thresholds,
+        alerting: &mut Option<u64>,
+        now: u64,
+    ) -> Vec<AlertLine> {
+        if self.offline_level == 0 || !host.enabled {
+            *alerting = None; // off, or paused on purpose: nothing to say
+            return vec![];
+        }
+        let after = u64::from(th.offline_minutes) * 60;
+        let down_for = down_since.map(|t| now.saturating_sub(t));
+        let repeat = self.repeat_minutes.saturating_mul(60);
+        let (state, level) = match (down_for, *alerting) {
+            (Some(d), None) if d >= after => ("raised", self.offline_level),
+            (Some(_), Some(last)) if repeat > 0 && now.saturating_sub(last) >= repeat => {
+                ("ongoing", self.offline_level)
+            }
+            (None, Some(_)) => ("recovered", self.recovered_level),
+            _ => return vec![],
+        };
+        *alerting = (state != "recovered").then_some(now);
+        if level == 0 {
+            return vec![];
+        }
+        let minutes = down_for.map(|d| d / 60);
+        let message = match minutes {
+            Some(m) => format!("{} hasn't answered for {m} min: {error}", host.name),
+            None => format!("{} answers again", host.name),
+        };
+        vec![AlertLine {
+            fleetboard: AlertBody {
+                event: "offline",
+                state,
+                level,
+                previous_level: if state == "raised" {
+                    0
+                } else {
+                    self.offline_level
+                },
+                host: host.name.clone(),
+                address: host.address.clone(),
+                sensor: "client".into(),
+                down_minutes: minutes,
+                error: (!error.is_empty()).then(|| error.to_string()),
+                rule: "offline".into(),
+                message,
+                ts: now,
+                ..Default::default()
+            },
+        }]
     }
 }
 
@@ -358,14 +553,7 @@ impl AlertLog {
         }
         for l in lines {
             let b = &l.fleetboard;
-            tracing::info!(
-                "Wazuh level {} ({}): {} {} at {}°C",
-                b.level,
-                b.state,
-                b.host,
-                b.sensor,
-                b.celsius
-            );
+            tracing::info!("Wazuh level {} ({}): {}", b.level, b.state, b.message);
         }
         let _guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
         match self.append(lines) {
@@ -629,5 +817,118 @@ mod tests {
         log.write(&lines[..1]);
         assert_eq!(std::fs::read_to_string(&c.log).unwrap().lines().count(), 1);
         assert!(dir.path().join("sub").join("alerts.json.1").exists());
+    }
+
+    /// A snapshot with one disk `used` of 100 bytes full.
+    fn disk_snap(used: u64) -> Snapshot {
+        let mut s = snap(10.0, None);
+        s.disks = vec![fleetboard_proto::Disk {
+            mount: "/srv".into(),
+            device: None,
+            fs: "xfs".into(),
+            used_bytes: used,
+            total_bytes: 100,
+        }];
+        s
+    }
+
+    #[test]
+    fn disks_raise_at_the_thresholds_and_recover_after_the_hysteresis() {
+        let c = WazuhConfig {
+            repeat_minutes: 0,
+            ..WazuhConfig::default()
+        }; // disk levels 7 and 12, hysteresis 2 %
+        let th = crate::thresholds::Thresholds::default(); // 90 % and 97 %
+        let mut mem = DiskAlerts::new();
+        let states = |out: Vec<AlertLine>| {
+            out.iter()
+                .map(|l| (l.fleetboard.state, l.fleetboard.level))
+                .collect::<Vec<_>>()
+        };
+        assert!(c
+            .evaluate_disks(&host(), &disk_snap(80), &th, &mut mem, 1)
+            .is_empty());
+        let out = c.evaluate_disks(&host(), &disk_snap(91), &th, &mut mem, 2);
+        assert_eq!(states(out.clone()), vec![("raised", 7)]);
+        assert_eq!(out[0].fleetboard.event, "disk");
+        assert_eq!(out[0].fleetboard.used_pct, Some(91.0));
+        assert!(out[0].fleetboard.message.contains("/srv is 91% full"));
+        assert_eq!(
+            states(c.evaluate_disks(&host(), &disk_snap(98), &th, &mut mem, 3)),
+            vec![("raised", 12)]
+        );
+        assert!(c
+            .evaluate_disks(&host(), &disk_snap(96), &th, &mut mem, 4)
+            .is_empty()); // inside the hysteresis
+        assert_eq!(
+            states(c.evaluate_disks(&host(), &disk_snap(94), &th, &mut mem, 5)),
+            vec![("lowered", 7)]
+        );
+        assert_eq!(
+            states(c.evaluate_disks(&host(), &disk_snap(87), &th, &mut mem, 6)),
+            vec![("recovered", 3)]
+        );
+        // disk_level 0 turns disk alerts off.
+        let off = WazuhConfig {
+            disk_level: 0,
+            ..WazuhConfig::default()
+        };
+        assert!(off
+            .evaluate_disks(&host(), &disk_snap(99), &th, &mut mem, 7)
+            .is_empty());
+    }
+
+    #[test]
+    fn a_host_silent_past_offline_minutes_raises_once_and_recovers() {
+        let c = WazuhConfig {
+            repeat_minutes: 30,
+            ..WazuhConfig::default()
+        }; // offline level 10
+        let th = crate::thresholds::Thresholds::default(); // 10 minutes
+        let mut alerting = None;
+        let down = Some(1000);
+        assert!(c
+            .evaluate_offline(
+                &host(),
+                down,
+                "didn't answer in time",
+                &th,
+                &mut alerting,
+                1000 + 599
+            )
+            .is_empty());
+        let out = c.evaluate_offline(
+            &host(),
+            down,
+            "didn't answer in time",
+            &th,
+            &mut alerting,
+            1000 + 600,
+        );
+        assert_eq!(
+            (out[0].fleetboard.state, out[0].fleetboard.level),
+            ("raised", 10)
+        );
+        assert_eq!(out[0].fleetboard.event, "offline");
+        assert_eq!(out[0].fleetboard.down_minutes, Some(10));
+        assert!(c
+            .evaluate_offline(&host(), down, "x", &th, &mut alerting, 1000 + 700)
+            .is_empty()); // once
+        let out = c.evaluate_offline(&host(), down, "x", &th, &mut alerting, 1000 + 600 + 1800);
+        assert_eq!(out[0].fleetboard.state, "ongoing"); // repeat_minutes later
+        let out = c.evaluate_offline(&host(), None, "", &th, &mut alerting, 5000);
+        assert_eq!(
+            (out[0].fleetboard.state, out[0].fleetboard.level),
+            ("recovered", 3)
+        );
+        assert_eq!(alerting, None);
+        // A paused host never alerts.
+        let paused = Host {
+            enabled: false,
+            ..host()
+        };
+        assert!(c
+            .evaluate_offline(&paused, down, "x", &th, &mut alerting, 99_999)
+            .is_empty());
     }
 }

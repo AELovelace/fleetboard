@@ -1,0 +1,80 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Fleetboard service API",
+    "version": "1",
+    "description": "Read the fleet (hosts, health, thresholds, disk forecasts, history, client audit, activity) and make a few audited changes. Every route except this description needs `Authorization: Bearer fbt_…`, a service token made with `fleetboard-server token add`. A read token may only read; changes need an act token. Lists are {total, rows}; units are in field names; times are UTC ISO."
+  },
+  "servers": [{"url": "http://127.0.0.1:9281/api/v1"}],
+  "components": {
+    "securitySchemes": {"token": {"type": "http", "scheme": "bearer"}},
+    "schemas": {
+      "Reason": {"type": "object", "required": ["reason"], "properties": {"reason": {"type": "string", "minLength": 3, "maxLength": 500, "description": "Why; written to the audit log"}}}
+    }
+  },
+  "security": [{"token": []}],
+  "paths": {
+    "/whoami": {"get": {"summary": "Token check", "description": "The token's name and whether it may read and act.", "responses": {"200": {"description": "ok"}, "401": {"description": "missing, unknown or revoked token"}}}},
+    "/summary": {"get": {"summary": "Fleet summary", "description": "Hosts up/down/paused/silent, the five busiest hosts by CPU, the five fullest disks, every host's current issues and the thresholds in use.", "responses": {"200": {"description": "ok"}}}},
+    "/hosts": {
+      "get": {"summary": "Hosts", "description": "One lean row per host: status, silent, last_seen, data_age_s, client_version, schema, cpu_pct, mem_pct, fullest disk, hottest_c, issue count.",
+        "parameters": [
+          {"name": "status", "in": "query", "schema": {"type": "string", "enum": ["all", "up", "down", "paused", "waiting", "silent", "issues"], "default": "all"}, "description": "Only hosts in this state"},
+          {"name": "silent_minutes", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 10080}, "description": "Silent after this many minutes (default: the offline_minutes threshold)"}
+        ], "responses": {"200": {"description": "ok"}}},
+      "post": {"summary": "Add host", "description": "Action (act token). Adds a host after checking that it answers with the shared client token.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["name", "address", "reason"], "properties": {"name": {"type": "string"}, "address": {"type": "string", "description": "host[:port], default port 9280"}, "reason": {"type": "string"}}}}}},
+        "responses": {"201": {"description": "added"}, "403": {"description": "read-only token"}, "422": {"description": "didn't answer, or invalid"}}}
+    },
+    "/host": {"get": {"summary": "Host detail", "description": "One host in full: facts, CPU, memory, each disk, GPU and sensor, the busiest interfaces, listen address, binary SHA-256 and its issues.",
+      "parameters": [{"name": "host", "in": "query", "required": true, "schema": {"type": "string"}, "description": "Host id, name or hostname"}], "responses": {"200": {"description": "ok"}, "404": {"description": "no such host"}}}},
+    "/over": {"get": {"summary": "Over thresholds", "description": "Every disk, memory and temperature over a limit right now, and hosts silent longer than offline_minutes. Limits default to the stored thresholds.",
+      "parameters": [
+        {"name": "disk_pct", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100}},
+        {"name": "mem_pct", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100}},
+        {"name": "temp_c", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200}}
+      ], "responses": {"200": {"description": "ok"}}}},
+    "/disks/forecast": {"get": {"summary": "Disk forecast", "description": "Per disk: used_pct, growth_bytes_per_day (least squares over daily averages, or hourly ones while history is short) and full_in_days / full_by.",
+      "parameters": [
+        {"name": "host", "in": "query", "schema": {"type": "string"}, "description": "Only this host (id, name or hostname)"},
+        {"name": "days", "in": "query", "schema": {"type": "integer", "minimum": 2, "maximum": 90, "default": 14}, "description": "Days of history the trend uses"},
+        {"name": "within_days", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 3650}, "description": "Only disks expected to fill within this many days"}
+      ], "responses": {"200": {"description": "ok"}}}},
+    "/history": {"get": {"summary": "History", "description": "One metric of one host as min/avg/max per interval: 10-second data for cpu/mem/load up to 24 h, hourly rollups up to 7 days (hours), daily rollups up to 90 days (days).",
+      "parameters": [
+        {"name": "host", "in": "query", "required": true, "schema": {"type": "string"}},
+        {"name": "metric", "in": "query", "required": true, "schema": {"type": "string"}, "description": "cpu, mem, load, temp, disk[:<mount>], net[:<interface>] or gpu[:<n>]"},
+        {"name": "hours", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 168, "default": 24}},
+        {"name": "days", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 90}, "description": "Daily rollups instead of hours"},
+        {"name": "interval", "in": "query", "schema": {"type": "string", "enum": ["auto", "10s", "1m", "5m", "15m", "1h", "6h", "1d"], "default": "auto"}}
+      ], "responses": {"200": {"description": "ok"}, "404": {"description": "no such host or no history for that metric"}}}},
+    "/clients": {"get": {"summary": "Client audit", "description": "Per host: client_version, schema, listen address, binary_sha256, and flags (listens on every address, binary differs from the other hosts on the same version and platform, older than the newest client).",
+      "parameters": [{"name": "flagged_only", "in": "query", "schema": {"type": "boolean", "default": false}}], "responses": {"200": {"description": "ok"}}}},
+    "/activity": {"get": {"summary": "Activity", "description": "The audit log, newest first: hosts added, changed, paused, removed, thresholds set, refused actions.",
+      "parameters": [
+        {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}},
+        {"name": "host", "in": "query", "schema": {"type": "string"}, "description": "Only entries about this host name"}
+      ], "responses": {"200": {"description": "ok"}}}},
+    "/thresholds": {"get": {"summary": "Thresholds", "description": "The limits in use (disk_pct, disk_critical_pct, mem_pct, temp_c, offline_minutes) with defaults and ranges.", "responses": {"200": {"description": "ok"}}}},
+    "/thresholds/{name}": {"post": {"summary": "Set threshold", "description": "Action (act token). Change one limit; used by the audit operations and the Wazuh disk and offline alerts.",
+      "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string", "enum": ["disk_pct", "disk_critical_pct", "mem_pct", "temp_c", "offline_minutes"]}}],
+      "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["value", "reason"], "properties": {"value": {"type": "integer"}, "reason": {"type": "string"}}}}}},
+      "responses": {"200": {"description": "set"}, "403": {"description": "read-only token"}, "422": {"description": "out of range"}}}},
+    "/hosts/{id}/rename": {"post": {"summary": "Rename host", "description": "Action (act token).",
+      "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}],
+      "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["name", "reason"], "properties": {"name": {"type": "string"}, "reason": {"type": "string"}}}}}},
+      "responses": {"200": {"description": "renamed"}, "403": {"description": "read-only token"}}}},
+    "/hosts/{id}/pause": {"post": {"summary": "Pause monitoring", "description": "Action (act token). Stop polling and alerting on a host; history stays.",
+      "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}],
+      "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Reason"}}}},
+      "responses": {"200": {"description": "paused"}, "403": {"description": "read-only token"}, "409": {"description": "already paused"}}}},
+    "/hosts/{id}/resume": {"post": {"summary": "Resume monitoring", "description": "Action (act token). The host must answer first.",
+      "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}],
+      "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Reason"}}}},
+      "responses": {"200": {"description": "resumed"}, "403": {"description": "read-only token"}, "409": {"description": "already monitored"}}}},
+    "/hosts/{id}/remove": {"post": {"summary": "Remove host", "description": "Action (act token). Removes the host and all its history; can't be undone.",
+      "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}],
+      "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Reason"}}}},
+      "responses": {"200": {"description": "removed"}, "403": {"description": "read-only token"}}}}
+  }
+}

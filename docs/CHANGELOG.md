@@ -7,6 +7,23 @@ the release workflow copies the top section into the GitHub release notes.
 
 First release.
 
+- **Service API for Mnemerynne** (`/api/v1`, see [API.md](API.md)): scoped, revocable `fbt_`
+  service tokens stored as SHA-256 hashes (`fleetboard-server token add|list|revoke`), separate
+  from the shared client token. Reads: summary, hosts (with silent hosts), host detail, over
+  thresholds, disk forecast, history, client audit, activity, thresholds. Changes (act tokens
+  only, each audited as `Mnemerynne/Claude (token …)` with a reason): add, rename, pause, resume
+  and remove a host, set a threshold. Every call logged in `api_calls` (`fleetboard-server calls`).
+  Hand-written OpenAPI at `/api/v1/openapi.json`. Mnemerynne templates in the Mnemerynne repo.
+- **Longer history**: hourly (7 days) and daily (90 days) min/avg/max per metric, per disk,
+  interface and GPU, in a new `rollups` table. Schema version 2.
+- **Thresholds** in the database (`disk_pct`, `disk_critical_pct`, `mem_pct`, `temp_c`,
+  `offline_minutes`), shared by the API and the Wazuh alerts.
+- **Wazuh disk-full and offline alerts** (`disk_level`, `disk_critical_level`,
+  `disk_hysteresis_pct`, `offline_level` under `[wazuh]`), for machines without their own Wazuh
+  agent. Every alert line now has a `message`; the manager's rules use it as the description.
+- **Client** reports `host.listen` (its bind address) and `host.binary_sha256` (its own
+  executable's SHA-256) for the client audit. Both optional on the wire; schema stays 1.
+
 - **Wazuh temperature alerts**: `[wazuh]` and `[[wazuh.temperature]]` in `server.toml` set
   which temperature is which Wazuh level, per sensor and per host, with hysteresis, repeats and a
   "recovered" line. The server appends JSON lines to `/var/log/fleetboard/wazuh-alerts.json`

@@ -17,6 +17,14 @@ impl ApiError {
     pub fn conflict(msg: impl Into<String>) -> Self {
         Self(StatusCode::CONFLICT, msg.into())
     }
+    /// The token is good but its scopes don't allow this (a read-only token asking for an action).
+    pub fn forbidden(msg: impl Into<String>) -> Self {
+        Self(StatusCode::FORBIDDEN, msg.into())
+    }
+    /// A server-side failure the caller can't fix (a blocking task that died).
+    pub fn internal(msg: impl Into<String>) -> Self {
+        Self(StatusCode::INTERNAL_SERVER_ERROR, msg.into())
+    }
 }
 
 impl From<rusqlite::Error> for ApiError {

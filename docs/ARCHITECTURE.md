@@ -39,14 +39,30 @@
 - `wazuh.rs`: when `[wazuh]` is enabled, every successful poll checks each sensor and GPU
   temperature against the `[[wazuh.temperature]]` rules (the first matching rule decides), keeps the
   current level per host and sensor in `HostState`, and appends a JSON line for each change to the
-  file the Wazuh agent reads. The file is written after the host lock is released. See
+  file the Wazuh agent reads. Disks are checked against the database thresholds the same way, and
+  a host that fails every poll for `offline_minutes` gets an offline line (`evaluate_disks`,
+  `evaluate_offline`). The file is written after the host lock is released. See
   [WAZUH.md](WAZUH.md).
+- `rollup.rs`: every good snapshot also feeds the host's open hour and UTC day: min, max, sum,
+  count, first and last per metric (`cpu`, `mem`, `load`, `temp`, `disk:<mount>`,
+  `net:<if>:rx|tx`, `gpu:<n>[:temp|:vram]`). A closed hour or day, and every five minutes the open
+  ones, go to the `rollups` table, where parts merge into the stored row (`ON CONFLICT … min(),
+  max(), sum + …`). That's the disk forecast's and the long history's source.
+- `thresholds.rs`: `disk_pct`, `disk_critical_pct`, `mem_pct`, `temp_c`, `offline_minutes` in
+  `meta`, loaded at start and held by the poller; the API's *Set threshold* changes both.
+- `tokens.rs`: the `/api/v1` service tokens: `fbt_` + 40 random characters, stored as SHA-256,
+  scopes `read` or `read,act`.
 - `db.rs`: SQLite in WAL mode behind a mutex. `hosts`, `samples_10s` (compact columns for the
-  charted series plus a JSON column for every GPU) and `audit`. `history()` downsamples in SQL
-  with `GROUP BY ts / step`. Rows older than 24 h are pruned hourly.
+  charted series plus a JSON column for every GPU), `audit`, and since schema 2 `rollups`,
+  `api_tokens` and `api_calls`. `history()` downsamples in SQL with `GROUP BY ts / step`. Every
+  hour: 10-second rows older than 24 h, hourly rollups older than 7 days, daily ones and logged
+  calls older than 90 days are pruned.
 - `api/`: `/api/hosts` (check before save, like the balancer settings), `/api/live` (SSE: first
   event at once, a `tick` per poll, `: ping` every 20 s, `bye` after five minutes), `/api/ring`,
-  `/api/history`, `/healthz`, and the embedded `web/` files with an ETag.
+  `/api/history`, `/healthz`, and the embedded `web/` files with an ETag. `api/v1.rs` is the
+  service API ([API.md](API.md)): one middleware checks the token, refuses any non-GET from a
+  read token, puts a `Caller` on the request and logs the call; the handlers share
+  `hosts::add_host`, `change_host` and `remove_host` with the dashboard, so both audit alike.
 - Timestamps are the server's clock throughout; the client's `taken_at` is for display.
 
 ## Why it looks the way it does behind Mnemerynne's proxy
@@ -62,6 +78,12 @@ theme follows the parent frame's `data-theme` with neon as the default.
 ## Trust
 
 The client's token is a shared secret on the LAN: anyone who has it can read a machine's stats,
-nothing more (the client has no write routes). The server has no secrets besides that token and
-is reachable only from the box it runs on. Who may *see* the dashboard is entirely Mnemerynne's
-group setting on the Remote app.
+nothing more (the client has no write routes). The server is reachable only from the box it runs
+on. Who may *see* the dashboard is entirely Mnemerynne's group setting on the Remote app.
+
+The service API is the one place with its own sign-in: separate `fbt_` tokens, stored as hashes,
+scoped read or act, revocable, never accepted by a client and never the client token. Mnemerynne
+holds them as API credentials; its own groups decide who may use the Fleetboard APIs, and its
+proposals make a person press *Run it* before any change. Fleetboard then audits the change with
+the token's name and the reason. The dashboard routes (`/api/hosts` and friends) still trust
+loopback, as before.

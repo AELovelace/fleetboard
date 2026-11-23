@@ -8,8 +8,13 @@
 //!
 //! Module map: `config` (server.toml), `db` (SQLite), `poller` (the 2-second loop, modelled on
 //! Mnemerynne's balancer poller), `ring` (the last 10 minutes per host), `bucket` (10-second
-//! averages), `api` (routes), `addr` (host:port parsing), `wazuh` (temperature alerts for
-//! the Wazuh agent).
+//! averages), `rollup` (hourly and daily min/avg/max for 7 and 90 days), `api` (routes, with
+//! `api::v1` the token-authenticated service API Mnemerynne calls), `tokens` (its service
+//! tokens), `thresholds` (the audit and alert limits), `addr` (host:port parsing), `time` (UTC
+//! dates), `wazuh` (temperature, disk and offline alerts for the Wazuh agent).
+//!
+//! The dashboard routes still have no authentication of their own (Mnemerynne's Remote proxy does
+//! it); only `/api/v1` asks for a service token.
 
 pub mod addr;
 pub mod api;
@@ -18,6 +23,10 @@ pub mod config;
 pub mod db;
 pub mod poller;
 pub mod ring;
+pub mod rollup;
+pub mod thresholds;
+pub mod time;
+pub mod tokens;
 pub mod wazuh;
 
 /// The server's own version, shown in the dashboard footer and `/healthz`.

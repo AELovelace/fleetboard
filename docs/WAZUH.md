@@ -80,10 +80,38 @@ A line is written only when something changes, so a sensor sitting at 86 °C doe
 | `recovered` | it cooled below the lowest threshold by `hysteresis_c` | `recovered_level` |
 
 ```json
-{"fleetboard":{"event":"temperature","state":"raised","level":10,"previous_level":5,"host":"RDS 1","address":"10.0.0.5:9280","hostname":"rds1","sensor":"k10temp Tctl","celsius":91.3,"threshold_c":90.0,"rule":"Everything else","ts":1762862400}}
+{"fleetboard":{"event":"temperature","state":"raised","level":10,"previous_level":5,"host":"RDS 1","address":"10.0.0.5:9280","hostname":"rds1","sensor":"k10temp Tctl","celsius":91.3,"threshold_c":90.0,"rule":"Everything else","message":"RDS 1 k10temp Tctl is 91.3 C (raised, rule Everything else)","ts":1762862400}}
 ```
 
-Each line also appears in the server's journal (`Wazuh level 10 (raised): RDS 1 k10temp Tctl at
-91.3°C`). If the file can't be written, the journal says so once, and again once writing works.
-The server remembers levels only in memory, so after a restart a sensor that is still hot is
-reported again as `raised`.
+Each line also appears in the server's journal (`Wazuh level 10 (raised): RDS 1 k10temp Tctl is
+91.3 C (raised, rule Everything else)`). If the file can't be written, the journal says so once,
+and again once writing works. The server remembers levels only in memory, so after a restart a
+sensor that is still hot is reported again as `raised`.
+
+## Disk-full and offline alerts
+
+The same file also carries disk and offline lines, for machines that have no Wazuh agent of their
+own. Their limits are Fleetboard's **thresholds** (in the database; see [API.md](API.md#thresholds),
+changed with the API's *Set threshold* action), and their levels are set in `[wazuh]`:
+
+```toml
+[wazuh]
+disk_level = 7             # a disk at disk_pct (default 90 %); 0 = no disk alerts
+disk_critical_level = 12   # a disk at disk_critical_pct (default 97 %); 0 = stay at disk_level
+disk_hysteresis_pct = 2    # a disk's level drops once it is this far below the limit
+offline_level = 10         # a host silent for offline_minutes (default 10); 0 = no offline alerts
+```
+
+- **Disks** work like temperatures: `raised`, `lowered`, `ongoing` every `repeat_minutes`, and
+  `recovered` at `recovered_level`. A disk that vanishes (an unplugged USB disk) is forgotten.
+- **Offline**: `raised` once a host has failed every poll for `offline_minutes`, `ongoing` every
+  `repeat_minutes`, `recovered` when it answers again. A paused host never raises one.
+
+```json
+{"fleetboard":{"event":"disk","state":"raised","level":7,"previous_level":0,"host":"rsync-box","address":"10.0.0.9:9280","hostname":"rsync","sensor":"/srv","used_pct":91.2,"threshold_pct":90.0,"rule":"disk","message":"rsync-box disk /srv is 91.2% full (raised)","ts":1762862400}}
+{"fleetboard":{"event":"offline","state":"raised","level":10,"previous_level":0,"host":"NAS","address":"10.0.0.4:9280","hostname":"","sensor":"client","down_minutes":10,"error":"didn't answer in time","rule":"offline","message":"NAS hasn't answered for 10 min: didn't answer in time","ts":1762862400}}
+```
+
+The manager's rules ([`fleetboard_rules.xml`](../deploy/wazuh/fleetboard_rules.xml)) match all
+three events and use `fleetboard.message` as the alert's description. **Copy the updated file to the
+manager again** if you installed an older one; it matched temperature lines only.
