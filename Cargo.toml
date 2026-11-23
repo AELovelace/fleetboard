@@ -7,7 +7,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0"                      # one version for every crate; bumped together per release tag
+version = "0.2.0"                      # one version for every crate; bumped together per release tag
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/AELovelace/fleetboard"

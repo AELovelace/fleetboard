@@ -3,9 +3,11 @@
 All notable changes, newest first. Format after [Keep a Changelog](https://keepachangelog.com/);
 the release workflow copies the top section into the GitHub release notes.
 
-## 0.1.0 - unreleased
+## 0.2.0 - 2026-11-23
 
-First release.
+Update the server first (its database moves to schema 2 on start), then the clients when
+convenient; 0.1.0 clients keep working. Copy the new `deploy/wazuh/fleetboard_rules.xml` to the
+Wazuh manager for the disk and offline alerts.
 
 - **Service API for Mnemerynne** (`/api/v1`, see [API.md](API.md)): scoped, revocable `fbt_`
   service tokens stored as SHA-256 hashes (`fleetboard-server token add|list|revoke`), separate
@@ -23,13 +25,18 @@ First release.
   agent. Every alert line now has a `message`; the manager's rules use it as the description.
 - **Client** reports `host.listen` (its bind address) and `host.binary_sha256` (its own
   executable's SHA-256) for the client audit. Both optional on the wire; schema stays 1.
-
 - **Wazuh temperature alerts**: `[wazuh]` and `[[wazuh.temperature]]` in `server.toml` set
   which temperature is which Wazuh level, per sensor and per host, with hysteresis, repeats and a
   "recovered" line. The server appends JSON lines to `/var/log/fleetboard/wazuh-alerts.json`
   for the local Wazuh agent; `deploy/wazuh/` has the agent snippet and the manager's rules.
   `install-server.sh` writes an example section and `LogsDirectory=fleetboard`; with
   `--keep-options` it now keeps `server.toml` as well as `server.env`.
+- **Windows counters**: Microsoft's Basic Render Driver is skipped by vendor and name too, so a
+  headless server no longer shows the software adapter as a GPU.
+
+## 0.1.0 - 2026-10-28
+
+First release.
 
 - **Client**: CPU (total, per core, load averages, clock), memory and swap, real disks, network
   rates, temperatures; GPUs through NVML (NVIDIA, both OSes), amdgpu sysfs (AMD on Linux) and
