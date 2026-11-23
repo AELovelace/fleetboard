@@ -23,10 +23,10 @@ Two small Rust programs, one repo:
 | 9280 | client: `/healthz` (open), `/stats` (bearer token) | the Mnemerynne box only (the installers add the firewall rule) |
 | 9281 | server: dashboard, `/api/*`, `/healthz`; `/api/v1/*` (service token) | this machine only; people open `https://<erynne>/remote/fleetboard/`, Mnemerynne calls `http://127.0.0.1:9281/api/v1` |
 
-## Claude and Mnemerynne's API templates
+## Claude and Mnemerynne's API presets
 
-Make two service tokens on the box and give them to Mnemerynne's two Fleetboard API templates
-(`api-templates/fleetboard.json` and `fleetboard-actions.json` in the Mnemerynne repo):
+Make two service tokens on the box and give them to Mnemerynne's two built-in Fleetboard API
+presets, **Fleetboard** and **Fleetboard (changes)** (Access → APIs, pick the preset, **Add**):
 
 ```bash
 sudo -u fleetboard fleetboard-server token add mnemerynne-read               # reads only

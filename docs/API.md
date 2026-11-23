@@ -132,7 +132,7 @@ so a restart loses at most five minutes of them.
 
 ## In Mnemerynne
 
-The matching API templates live in the Mnemerynne repository: `api-templates/fleetboard.json`
-(reads) and `api-templates/fleetboard-actions.json` (changes). Upload them on **Access → APIs →
-Upload template…**, add each, and paste the matching token. See Mnemerynne's admin help,
-*Internal APIs → Fleetboard*.
+Mnemerynne has two built-in presets for this API, **Fleetboard** (reads) and **Fleetboard
+(changes)**, read from `api-templates/fleetboard.json` and `fleetboard-actions.json` in the
+Mnemerynne repository. On **Access → APIs**, pick each preset, press **Add**, and paste the matching
+token. See Mnemerynne's admin help, *Internal APIs → Fleetboard*.
